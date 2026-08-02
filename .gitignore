@@ -1,0 +1,97 @@
+## ---------------------------------------------------------------------------
+## .NET (api/, api.Tests/)
+## ---------------------------------------------------------------------------
+bin/
+obj/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.dbmdl
+*.pdb
+*.cache
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+
+# Publish / build output
+publish/
+*.publish.xml
+*.pubxml
+*.azurePubxml
+
+# ASP.NET secrets / local config overrides
+appsettings.*.local.json
+secrets.json
+*.env
+
+# Rider / VS local files
+.vs/
+*.ntvs*
+*.njsproj
+*.sln.docstates
+
+## ---------------------------------------------------------------------------
+## Next.js / Node (web/)
+## ---------------------------------------------------------------------------
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Next.js cache / telemetry
+.turbo/
+next-env.d.ts.bak
+
+# Env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug / logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# Package manager artifacts
+.pnp/
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# TypeScript build info
+*.tsbuildinfo
+
+## ---------------------------------------------------------------------------
+## Editor / OS
+## ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+## ---------------------------------------------------------------------------
+## Claude Code (yerel yapılandırma / talimat dosyaları)
+## ---------------------------------------------------------------------------
+.claude/
+CLAUDE.md
+
+## ---------------------------------------------------------------------------
+## Proje özel (geçici / üretilmiş dosyalar)
+## ---------------------------------------------------------------------------
+project_tree.txt
