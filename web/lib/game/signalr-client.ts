@@ -1,10 +1,12 @@
 import * as signalR from "@microsoft/signalr";
+import type { PaymentConfirmedEvent } from "@/lib/payments/types";
 import type { MatchStateDto } from "./types";
 
 const HUB_URL = process.env.NEXT_PUBLIC_API_HUB_URL ?? "http://localhost:5019/hub/game";
 
 export type MatchStateHandler = (state: MatchStateDto) => void;
 export type ActionErrorHandler = (message: string) => void;
+export type PaymentConfirmedHandler = (event: PaymentConfirmedEvent) => void;
 
 /** SignalR bağlantı yönetimi: bağlan/yeniden bağlan/mesaj dinleme. */
 export class GameConnection {
@@ -24,6 +26,11 @@ export class GameConnection {
 
   onActionError(handler: ActionErrorHandler) {
     this.connection.on("ActionError", handler);
+  }
+
+  /** Bölüm 3.1 (docs/05-payment.md): ödeme onaylandığında sunucudan gelen event. */
+  onPaymentConfirmed(handler: PaymentConfirmedHandler) {
+    this.connection.on("PaymentConfirmed", handler);
   }
 
   onReconnected(handler: () => void) {

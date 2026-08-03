@@ -26,7 +26,7 @@ export default function GameLobbyPage() {
     try {
       const res = await createMatch(playerName.trim());
       storePlayerSession(res.matchId, res.playerId);
-      router.push(`/game/${res.matchId}`);
+      router.push(`/game/${res.matchId}/pay`);
     } catch (err) {
       setError(String(err));
       setBusy(false);
@@ -43,7 +43,7 @@ export default function GameLobbyPage() {
     try {
       const res = await joinMatch(joinMatchId.trim(), playerName.trim());
       storePlayerSession(res.matchId, res.playerId);
-      router.push(`/game/${res.matchId}`);
+      router.push(`/game/${res.matchId}/pay`);
     } catch (err) {
       setError(String(err));
       setBusy(false);

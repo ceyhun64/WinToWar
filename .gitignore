@@ -29,6 +29,11 @@ appsettings.*.local.json
 secrets.json
 *.env
 
+# Ödeme modülü — yerel SQLite veritabanı (docs/05-payment.md)
+*.db
+*.db-shm
+*.db-wal
+
 # Rider / VS local files
 .vs/
 *.ntvs*
@@ -91,7 +96,9 @@ desktop.ini
 .claude/
 CLAUDE.md
 
+
 ## ---------------------------------------------------------------------------
 ## Proje özel (geçici / üretilmiş dosyalar)
 ## ---------------------------------------------------------------------------
 project_tree.txt
+docs/

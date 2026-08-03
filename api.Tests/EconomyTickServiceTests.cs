@@ -19,7 +19,7 @@ public class EconomyTickServiceTests
         var matchManager = new MatchManager(mapProvider, NullLogger<MatchManager>.Instance);
         var combatService = new CombatService(NullLogger<CombatService>.Instance);
         var movementService = new MovementService(mapProvider, combatService, NullLogger<MovementService>.Instance);
-        _sut = new EconomyTickService(matchManager, movementService, hubContext: null!, NullLogger<EconomyTickService>.Instance);
+        _sut = new EconomyTickService(matchManager, movementService, hubContext: null!, scopeFactory: null!, NullLogger<EconomyTickService>.Instance);
     }
 
     private static (Match match, Player player, Region region) CreateMatchWithNest(int nestLevel, double startingGold = 0)

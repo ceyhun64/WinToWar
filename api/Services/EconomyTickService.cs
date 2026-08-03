@@ -1,6 +1,7 @@
 using api.Hubs;
 using api.Models;
 using api.Models.Dtos;
+using api.Services.Payments;
 using api.Services.GameEngine;
 using Microsoft.AspNetCore.SignalR;
 
@@ -20,17 +21,20 @@ public class EconomyTickService : BackgroundService
     private readonly MatchManager _matchManager;
     private readonly MovementService _movementService;
     private readonly IHubContext<GameHub> _hubContext;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<EconomyTickService> _logger;
 
     public EconomyTickService(
         MatchManager matchManager,
         MovementService movementService,
         IHubContext<GameHub> hubContext,
+        IServiceScopeFactory scopeFactory,
         ILogger<EconomyTickService> logger)
     {
         _matchManager = matchManager;
         _movementService = movementService;
         _hubContext = hubContext;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -53,7 +57,33 @@ public class EconomyTickService : BackgroundService
                 }
 
                 await BroadcastState(match, stoppingToken);
+
+                if (match.Status == MatchStatus.Finished && match.WinnerId is not null)
+                {
+                    await TriggerPayoutAsync(match.Id, match.WinnerId, stoppingToken);
+                }
             }
+        }
+    }
+
+    /// <summary>
+    /// Bölüm 3.2 (docs/05-payment.md): maç bir kazananla bittiğinde payout akışını
+    /// tetikler. PayoutService.ProcessPayoutAsync kendi içinde idempotenttir
+    /// (Payout.MatchId unique) — bu yüzden her tick'te güvenle tekrar çağrılabilir.
+    /// Ödeme modülü ayrı bir DI scope'unda (PaymentDbContext scoped) çalıştığından
+    /// burada yeni bir scope açılır.
+    /// </summary>
+    private async Task TriggerPayoutAsync(string matchId, string winnerPlayerId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var payoutService = scope.ServiceProvider.GetRequiredService<PayoutService>();
+            await payoutService.ProcessPayoutAsync(matchId, winnerPlayerId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Payout tetiklenirken hata: {MatchId}", matchId);
         }
     }
 
