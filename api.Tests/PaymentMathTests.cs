@@ -31,7 +31,7 @@ public class PaymentMathTests
         const decimal estimatedFeeLtc = 0.0005m;
 
         var commissionLtc = PaymentMath.CalculateCommission(totalPoolLtc, commissionRate);
-        var amountLtc = PaymentMath.CalculatePayoutAmount(totalPoolLtc, commissionLtc, estimatedFeeLtc);
+        var amountLtc = PaymentMath.CalculatePerWinnerShareLtc(totalPoolLtc, commissionLtc, winnerCount: 1, estimatedFeeLtc);
 
         // Ara değerler tam hassasiyetle taşınmış olmalı (decimal'in doğal hassasiyeti korunur,
         // 8 basamaktan fazla ondalık içerebilir — henüz hiç yuvarlanmadı).

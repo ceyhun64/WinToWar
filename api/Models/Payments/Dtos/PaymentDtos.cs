@@ -38,10 +38,19 @@ public class PaymentInvoiceDto
     public required string ReceivingAddress { get; init; }
     public required string Bip21Uri { get; init; }
     public required string ExpiresAt { get; init; }
+    public required string CreatedAt { get; init; }
     public required bool RateServedFromCache { get; init; }
 
     /// <summary>Bölüm 1.9 "Lobi dolma yarış durumu" — `/odeme/[invoiceId]` bu alanı polling ile okur.</summary>
     public required string MatchJoinOutcome { get; init; }
+
+    /// <summary>
+    /// Bölüm 2.1 / `07-pages.md` `/odeme/[invoiceId]`: canlı onay ilerlemesi
+    /// ("1/2 onay" gibi) göstermek için — CurrentConfirmations webhook'larla artar,
+    /// RequiredConfirmations sabit eşiktir (Bölüm 1.4, PaymentConfig).
+    /// </summary>
+    public required int CurrentConfirmations { get; init; }
+    public required int RequiredConfirmations { get; init; }
 }
 
 public class WalletDto

@@ -41,6 +41,14 @@ public class PaymentInvoice
 
     public PaymentInvoiceStatus Status { get; set; } = PaymentInvoiceStatus.Pending;
 
+    /// <summary>
+    /// Bölüm 2.1 "yeni — `/odeme/[invoiceId]` UI'ının canlı onay ilerlemesi
+    /// göstermesi için eklendi": webhook her onay geldiğinde günceller. Yalnızca
+    /// gösterim amaçlıdır, hiçbir hesaplamada kullanılmaz (asıl eşik kontrolü
+    /// Bölüm 1.4'teki RequiredConfirmations ile PaymentService'te ayrıca yapılır).
+    /// </summary>
+    public int CurrentConfirmations { get; set; }
+
     /// <summary>Bölüm 2.1: computed/mapped — burada Status'tan türetilen, DB'ye yazılmayan bir alan.</summary>
     public int StatusRank => StatusRankPolicy.GetRank(Status);
 

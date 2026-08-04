@@ -219,7 +219,7 @@ public class PaymentService
     /// <summary>docs/07-pages.md `/admin`: "günlük hacim" — bugün onaylanan invoice'ların toplam USD tutarı.</summary>
     public async Task<decimal> GetTodayConfirmedVolumeUsdAsync(CancellationToken cancellationToken)
     {
-        var todayStartUtc = DateTimeOffset.UtcNow.Date;
+        var todayStartUtc = _timeProvider.GetUtcNow().Date;
         var confirmedToday = await _db.PaymentInvoices.AsNoTracking()
             .Where(i => i.Status == PaymentInvoiceStatus.Confirmed && i.ConfirmedAt != null)
             .ToListAsync(cancellationToken);
@@ -291,6 +291,16 @@ public class PaymentService
         else
         {
             processedEvent.PaymentInvoiceId = invoice.Id;
+
+            // Bölüm 2.1: yalnızca gösterim amaçlı ilerleme sayacı — invoice henüz
+            // terminal bir state'e ulaşmadıysa, gelen webhook'un bildirdiği onay
+            // sayısı öncekinden yüksekse güncellenir (hiçbir hesaplamada kullanılmaz,
+            // asıl eşik kontrolü aşağıda RequiredConfirmations ile ayrıca yapılır).
+            if (!StatusRankPolicy.IsTerminal(invoice.Status) && payload.Confirmations > invoice.CurrentConfirmations)
+            {
+                invoice.CurrentConfirmations = payload.Confirmations;
+            }
+
             var incomingStatus = MapEventTypeToStatus(payload.Type);
 
             if (incomingStatus is null)
@@ -417,7 +427,7 @@ public class PaymentService
         _ => null
     };
 
-    private static PaymentInvoiceDto ToDto(PaymentInvoice invoice, string? receivingAddress, string? bip21Uri) => new()
+    private PaymentInvoiceDto ToDto(PaymentInvoice invoice, string? receivingAddress, string? bip21Uri) => new()
     {
         InvoiceId = invoice.Id.ToString(),
         MatchId = invoice.MatchId,
@@ -429,7 +439,10 @@ public class PaymentService
         ReceivingAddress = receivingAddress ?? string.Empty,
         Bip21Uri = bip21Uri ?? string.Empty,
         ExpiresAt = invoice.ExpiresAt.ToString("O", CultureInfo.InvariantCulture),
+        CreatedAt = invoice.CreatedAt.ToString("O", CultureInfo.InvariantCulture),
         RateServedFromCache = invoice.RateServedFromCache,
-        MatchJoinOutcome = invoice.MatchJoinOutcome.ToString()
+        MatchJoinOutcome = invoice.MatchJoinOutcome.ToString(),
+        CurrentConfirmations = invoice.CurrentConfirmations,
+        RequiredConfirmations = _config.RequiredConfirmations
     };
 }

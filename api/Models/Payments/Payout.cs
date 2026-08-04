@@ -12,7 +12,7 @@ public class Payout
     /// <summary>İdempotency anahtarı — maça yalnızca bir Payout (agregatör) satırı yazılır.</summary>
     public required string MatchId { get; set; }
 
-    /// <summary>12 oyuncunun toplam girişi (yuvarlanmamış ara değerden tek seferde yuvarlanmış).</summary>
+    /// <summary>Odaya katılan onaylı oyuncu sayısının toplam girişi (yuvarlanmamış ara değerden tek seferde yuvarlanmış).</summary>
     public decimal TotalPoolLtc { get; set; }
     public decimal CommissionLtc { get; set; }
 

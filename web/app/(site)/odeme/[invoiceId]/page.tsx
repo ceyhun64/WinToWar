@@ -133,8 +133,6 @@ export default function OdemePage({ params }: OdemePageProps) {
     );
   }
 
-  const confirmations = invoice.rateServedFromCache ? "beklemede" : "1/1 onay bekleniyor";
-
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 px-4 py-16">
       <div>
@@ -163,7 +161,7 @@ export default function OdemePage({ params }: OdemePageProps) {
 
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="size-2 rounded-full bg-muted-foreground" />
-        Onay bekleniyor... ({confirmations})
+        Onay bekleniyor... ({invoice.currentConfirmations}/{invoice.requiredConfirmations} onay)
       </div>
 
       <Button variant="outline" disabled={simulating} onClick={handleSimulatePaid}>

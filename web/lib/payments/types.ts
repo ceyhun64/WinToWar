@@ -16,8 +16,12 @@ export interface PaymentInvoiceDto {
   receivingAddress: string;
   bip21Uri: string;
   expiresAt: string;
+  createdAt: string;
   rateServedFromCache: boolean;
   matchJoinOutcome: MatchJoinOutcome;
+  /** docs/07-pages.md `/odeme/[invoiceId]`: canlı onay ilerlemesi ("1/2 onay" gibi). */
+  currentConfirmations: number;
+  requiredConfirmations: number;
 }
 
 export interface PayoutRecipientDto {

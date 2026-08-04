@@ -1,12 +1,13 @@
 "use client";
 
-import type { MapDto, MatchStateDto } from "@/lib/game/types";
+import type { GameConfigDto, MapDto, MatchStateDto } from "@/lib/game/types";
 
 interface ActionPanelProps {
   map: MapDto;
   state: MatchStateDto;
   myPlayerId: string;
   selectedRegionId: string | null;
+  gameConfig: GameConfigDto;
 }
 
 /**
@@ -15,7 +16,7 @@ interface ActionPanelProps {
  * içindeki sürükle-bırak etkileşimine taşındı (bkz. GameMap.tsx). Bu panel yalnızca
  * seçili bölgenin salt-okunur özetini gösterir.
  */
-export function ActionPanel({ map, state, myPlayerId, selectedRegionId }: ActionPanelProps) {
+export function ActionPanel({ map, state, myPlayerId, selectedRegionId, gameConfig }: ActionPanelProps) {
   if (!selectedRegionId) {
     return (
       <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
@@ -47,8 +48,10 @@ export function ActionPanel({ map, state, myPlayerId, selectedRegionId }: Action
     );
   }
 
+  // docs/03-game-rules.md Bölüm 4 — bkz. Hud.tsx'teki aynı formülün gerekçesi.
   const myRegionCount = state.regions.filter((r) => r.ownerId === myPlayerId).length;
-  const myProduction = 4 /* GameConfig.BaseProductionPerInterval */ + Math.max(0, myRegionCount - 1);
+  const myProduction =
+    gameConfig.baseProductionPerInterval + Math.max(0, myRegionCount - 1) * gameConfig.productionBonusPerRegion;
 
   const neighbors = region.neighborIds
     .map((neighborId) => {

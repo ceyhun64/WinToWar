@@ -11,8 +11,7 @@ namespace api.Services.Payments;
 /// Bölüm 0.2 adım 9: reconciliation job. Distributed lock (DB-tablosu tabanlı,
 /// bkz. ReconciliationLock) altında periyodik olarak: bekleyen payout/refund
 /// gönderimlerini + retry'larını işler, gönderilmiş olanlar için gerçekleşen
-/// (actual) fee'yi sorgulayıp Completed'a taşır, ve Bölüm 1.6'daki eşleşme
-/// bulunamama zaman aşımı refund'unu tetikler.
+/// (actual) fee'yi sorgulayıp Completed'a taşır.
 ///
 /// PeriodicTimer + CancellationToken kullanılır (Bölüm 0.8/0.11 — asılı task/
 /// kaynak sızıntısı olmasın). BackgroundService singleton olduğundan her tick'te
@@ -76,7 +75,6 @@ public class ReconciliationService : BackgroundService
             await payoutService.ReconcileSentPayoutsAsync(cancellationToken);
             await refundService.ProcessDueRefundsAsync(cancellationToken);
             await ReconcileSentRefundsAndCloseInvoicesAsync(scope, cancellationToken);
-            await ProcessMatchmakingTimeoutsAsync(scope, cancellationToken);
         }
         finally
         {
@@ -165,60 +163,21 @@ public class ReconciliationService : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Bölüm 1.6 için ikinci katman güvence ağı: 12 kişilik lobi
-    /// GameConfig.LobbyFillTimeoutSeconds içinde dolmazsa EconomyTickService zaten
-    /// anında maçı Cancelled'a alıp refund'ları tetikler (tek kaynak: GameConfig,
-    /// bkz. docs/05-payment.md Bölüm 1.6 — PaymentConfig burada ayrı bir süre tutmaz).
-    /// Bu metot yalnızca o anlık tetiklemenin bir nedenle (ör. süreç yeniden başlatma)
-    /// kaçırdığı, hâlâ Lobby durumunda kalmış onaylanmış invoice'ları tarar.
-    /// Oyun motoru state'i bellekte tutulduğundan (MatchManager) burada yalnızca
-    /// okuma amaçlı erişilir — hiçbir oyun state mutasyonu yapılmaz.
-    /// </summary>
-    private async Task ProcessMatchmakingTimeoutsAsync(IServiceScope scope, CancellationToken cancellationToken)
-    {
-        var db = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
-        var matchManager = scope.ServiceProvider.GetRequiredService<MatchManager>();
-        var refundService = scope.ServiceProvider.GetRequiredService<RefundService>();
-        var now = _timeProvider.GetUtcNow();
-
-        var scanWindowStart = now.AddMinutes(-_config.ReconciliationScanWindowMinutes);
-
-        // 🛠️ Not: ConfirmedAt (DateTimeOffset) karşılaştırması client-side yapılır —
-        // SQLite EF Core provider'ı bu tür ifadeleri WHERE içinde translate edemiyor.
-        var confirmedInvoices = await db.PaymentInvoices
-            .Where(i => i.Status == PaymentInvoiceStatus.Confirmed && i.ConfirmedAt != null)
-            .ToListAsync(cancellationToken);
-        var candidates = confirmedInvoices.Where(i => i.ConfirmedAt >= scanWindowStart).ToList();
-
-        foreach (var invoice in candidates)
-        {
-            // Bölüm 1.9: MatchId null olan invoice'lar (saf top-up) bu güvence ağının kapsamı dışındadır.
-            if (invoice.MatchId is null || !matchManager.TryGetMatch(invoice.MatchId, out var match))
-            {
-                continue;
-            }
-
-            bool stillInLobby;
-            lock (match.Lock)
-            {
-                stillInLobby = match.Status == MatchStatus.Lobby;
-            }
-
-            if (!stillInLobby)
-            {
-                continue;
-            }
-
-            var elapsedSinceConfirmed = (now - invoice.ConfirmedAt!.Value).TotalSeconds;
-            if (elapsedSinceConfirmed < GameConfig.LobbyFillTimeoutSeconds)
-            {
-                continue;
-            }
-
-            await refundService.SubmitAsync(invoice, invoice.AmountLtc, RefundReason.MatchmakingTimeout, cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Lobi zaman aşımı güvence ağı: refund kuyruğa alındı: invoice={InvoiceId}, maç={MatchId}", invoice.Id, invoice.MatchId);
-        }
-    }
+    // 🛠️ DÜZELTME (bu turda kaldırıldı — gerçek bir para/kural hatasıydı): burada
+    // önceden bir "ProcessMatchmakingTimeoutsAsync" güvence ağı vardı; gerekçesi
+    // "EconomyTickService zaten lobi zaman aşımında maçı otomatik iptal edip
+    // refund tetikliyor, bu yalnızca kaçırılan tetiklemeleri yakalıyor" idi — bu
+    // öncül YANLIŞTI. EconomyTickService.TickLobbyAsync yalnızca tek seferlik bir
+    // "LobbyTimeoutReached" bildirimi yayınlar (docs/03-game-rules.md Bölüm 7 /
+    // docs/05-payment.md Bölüm 1.6: "Otomatik iade YOKTUR", karar oyuncuya aittir
+    // — İptal Et/Beklemeye Devam Et). Bu metot, süre dolan HER onaylı invoice'ı
+    // oyuncunun tercihine bakmaksızın koşulsuz refund ediyordu — "Beklemeye Devam
+    // Et" seçen bir oyuncunun parası onun haberi/isteği olmadan iade ediliyor,
+    // ama oyuncu lobide rezerve kalmaya devam ediyordu (RemovePlayerFromLobby hiç
+    // çağrılmıyordu) — bu hem 🔒 "otomatik iade yok" kuralını ihlal ediyor hem de
+    // "parası iade edilmiş ama hâlâ lobide/maçta" tutarsız bir durum yaratıyordu.
+    // Ayrıca metodun kendi gerekçesi olan "süreç yeniden başlatma sonrası kaçırılan
+    // tetikleme" senaryosunda da işe yaramıyordu: MatchManager bellek içi olduğundan
+    // bir restart'tan sonra ilgili Match zaten hiç bulunamıyor (TryGetMatch false
+    // döner), yani tam da "kurtarmak" istediği durumda sessizce hiçbir şey yapmıyordu.
 }

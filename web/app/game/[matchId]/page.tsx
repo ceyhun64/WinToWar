@@ -6,9 +6,9 @@ import { ActionPanel } from "@/components/game/ActionPanel";
 import { GameMap } from "@/components/game/GameMap";
 import { Hud } from "@/components/game/Hud";
 import { Button } from "@/components/ui/button";
-import { getMap } from "@/lib/game/api";
+import { getGameConfig, getMap } from "@/lib/game/api";
 import { useGameStore } from "@/lib/game/store";
-import type { MapDto } from "@/lib/game/types";
+import type { GameConfigDto, MapDto } from "@/lib/game/types";
 
 interface GamePageProps {
   params: Promise<{ matchId: string }>;
@@ -20,6 +20,7 @@ export default function GamePage({ params }: GamePageProps) {
 
   const [playerId, setPlayerId] = useState<string | null | undefined>(undefined);
   const [map, setMap] = useState<MapDto | null>(null);
+  const [gameConfig, setGameConfig] = useState<GameConfigDto | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 
@@ -30,6 +31,9 @@ export default function GamePage({ params }: GamePageProps) {
   useEffect(() => {
     getMap()
       .then(setMap)
+      .catch((err) => setLoadError(String(err)));
+    getGameConfig()
+      .then(setGameConfig)
       .catch((err) => setLoadError(String(err)));
   }, []);
 
@@ -59,7 +63,7 @@ export default function GamePage({ params }: GamePageProps) {
     return <div className="flex flex-1 items-center justify-center text-sm text-destructive">{loadError}</div>;
   }
 
-  if (!map || !store.state) {
+  if (!map || !gameConfig || !store.state) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
         Maça bağlanılıyor...
@@ -75,7 +79,7 @@ export default function GamePage({ params }: GamePageProps) {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 px-4 py-4">
-      <Hud state={state} myPlayerId={playerId} />
+      <Hud state={state} myPlayerId={playerId} gameConfig={gameConfig} />
 
       {state.status === "Lobby" || state.status === "Countdown" ? (
         <div className="flex flex-col items-center gap-3 rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
@@ -133,6 +137,7 @@ export default function GamePage({ params }: GamePageProps) {
           state={state}
           myPlayerId={playerId}
           selectedRegionId={selectedRegionId}
+          gameConfig={gameConfig}
         />
       </div>
 

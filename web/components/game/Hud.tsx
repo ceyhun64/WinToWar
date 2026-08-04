@@ -1,17 +1,27 @@
 "use client";
 
 import { colorForSlot } from "@/lib/game/colors";
-import type { MatchStateDto } from "@/lib/game/types";
+import type { GameConfigDto, MatchStateDto } from "@/lib/game/types";
 
 interface HudProps {
   state: MatchStateDto;
   myPlayerId: string;
+  gameConfig: GameConfigDto;
 }
 
-export function Hud({ state, myPlayerId }: HudProps) {
+/**
+ * docs/03-game-rules.md Bölüm 4: ProductionPerInterval = BaseProduction +
+ * ConqueredRegionCount × BonusPerRegion — ConqueredRegionCount ev/başlangıç
+ * kalesi HARİÇ elde tutulan bölge sayısıdır. Hâlâ aktif (elenmemiş) bir oyuncu
+ * her zaman kendi evini elinde tuttuğundan (bkz. CombatService.HandlePreviousOwnerLoss
+ * — ev kaybedilince oyuncu anında elenir), toplam bölge sayısından 1 çıkarmak bu
+ * sayıya eşittir. Değerler backend'in tek doğruluk kaynağı olan GameConfig'ten
+ * (bkz. lib/game/api.ts getGameConfig) okunur, burada tekrar sabitlenmez.
+ */
+export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
   const myRegions = state.regions.filter((r) => r.ownerId === myPlayerId);
   const myProduction =
-    4 /* GameConfig.BaseProductionPerInterval */ + Math.max(0, myRegions.length - 1);
+    gameConfig.baseProductionPerInterval + Math.max(0, myRegions.length - 1) * gameConfig.productionBonusPerRegion;
 
   return (
     <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-card px-4 py-2">

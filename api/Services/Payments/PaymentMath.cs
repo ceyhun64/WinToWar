@@ -29,19 +29,10 @@ public static class PaymentMath
         totalPoolLtc * commissionRate;
 
     /// <summary>
-    /// Kazanana net gönderilecek tutar: TotalPoolLtc - CommissionLtc - NetworkFeeLtc.
-    /// <paramref name="networkFeeLtc"/> burada her zaman geçici bir tahmindir (Bölüm 2.6);
-    /// sonucun kendisi de yuvarlanmadan döner, yalnızca RoundForPersistence ile
-    /// kalıcılaştırma anında yuvarlanır.
-    /// </summary>
-    public static decimal CalculatePayoutAmount(decimal totalPoolLtc, decimal commissionLtc, decimal networkFeeLtc) =>
-        totalPoolLtc - commissionLtc - networkFeeLtc;
-
-    /// <summary>
     /// Bölüm 2.2 (v8, N&gt;1 çoklu-kazanan formülü) / Bölüm 3.2 akış diyagramı:
     /// PerWinnerAmountLtc = (TotalPoolLtc - CommissionLtc) / WinnerCount - estimatedFee.
-    /// N=1 (normal, tek kazanan) senaryoda bu, <see cref="CalculatePayoutAmount"/> ile
-    /// birebir aynı sonucu verir — genel akışın N=1 özel durumu, ayrı bir dal değildir.
+    /// N=1 (normal, tek kazanan) senaryoda winnerCount=1 ile çağrılır — genel akışın
+    /// N=1 özel durumu, ayrı bir formül/dal değildir (PayoutService bunu tek yoldan uygular).
     /// </summary>
     public static decimal CalculatePerWinnerShareLtc(decimal totalPoolLtc, decimal commissionLtc, int winnerCount, decimal networkFeeLtc) =>
         (totalPoolLtc - commissionLtc) / winnerCount - networkFeeLtc;

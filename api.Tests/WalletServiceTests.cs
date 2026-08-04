@@ -148,6 +148,78 @@ public class WalletServiceTests : IDisposable
             _sut.ResolveAndSavePayoutAddressAsync("p1", "not-a-real-address", CancellationToken.None));
     }
 
+    /// <summary>Bölüm 1.9: Pending -> Approved -> Sent -> Completed sırayla geçilir (bkz. ApproveWithdrawalAsync).</summary>
+    [Fact]
+    public async Task ApproveWithdrawalAsync_ProviderSucceeds_EndsCompleted_AndSetsProcessedAt()
+    {
+        await _sut.CreditAsync("p1", 10.00m, CancellationToken.None);
+        var request = await _sut.RequestWithdrawalAsync("p1", 4.00m, ValidAddress, CancellationToken.None);
+
+        var handled = await _sut.ApproveWithdrawalAsync(Guid.Parse(request.Id), CancellationToken.None);
+
+        Assert.True(handled);
+        var stored = await _db.WithdrawalRequests.SingleAsync();
+        Assert.Equal(Models.Payments.WithdrawalRequestStatus.Completed, stored.Status);
+        Assert.NotNull(stored.ProcessedAt);
+    }
+
+    [Fact]
+    public async Task ApproveWithdrawalAsync_ProviderFails_EndsFailed_AndBalanceStaysDebited()
+    {
+        var failingSut = new WalletService(
+            _db, new FixedPriceOracle(44.5m), new FailingPaymentProvider(),
+            Options.Create(new PaymentConfig { MinWithdrawalUsd = 1.00m }), TimeProvider.System, NullLogger<WalletService>.Instance);
+
+        await failingSut.CreditAsync("p1", 10.00m, CancellationToken.None);
+        var request = await failingSut.RequestWithdrawalAsync("p1", 4.00m, ValidAddress, CancellationToken.None);
+
+        var handled = await failingSut.ApproveWithdrawalAsync(Guid.Parse(request.Id), CancellationToken.None);
+
+        Assert.True(handled);
+        var stored = await _db.WithdrawalRequests.SingleAsync();
+        Assert.Equal(Models.Payments.WithdrawalRequestStatus.Failed, stored.Status);
+        // Bölüm 1.9: Failed durumunda bakiye WalletService.RejectWithdrawalAsync'in aksine geri EKLENMEZ
+        // (ApproveWithdrawalAsync yalnızca Rejected'de iade eder) — gönderim denenmiş ama başarısız olmuştur,
+        // gerçek BTCPay entegrasyonunda bu durum admin'in elle incelemesini gerektirir.
+        Assert.Equal(6.00m, await failingSut.GetBalanceAsync("p1", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ApproveWithdrawalAsync_UnknownId_ReturnsFalse()
+    {
+        var handled = await _sut.ApproveWithdrawalAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.False(handled);
+    }
+
+    [Fact]
+    public async Task RejectWithdrawalAsync_RefundsDebitedAmount_AndMarksRejected()
+    {
+        await _sut.CreditAsync("p1", 10.00m, CancellationToken.None);
+        var request = await _sut.RequestWithdrawalAsync("p1", 4.00m, ValidAddress, CancellationToken.None);
+
+        var handled = await _sut.RejectWithdrawalAsync(Guid.Parse(request.Id), CancellationToken.None);
+
+        Assert.True(handled);
+        var stored = await _db.WithdrawalRequests.SingleAsync();
+        Assert.Equal(Models.Payments.WithdrawalRequestStatus.Rejected, stored.Status);
+        Assert.NotNull(stored.ProcessedAt);
+        Assert.Equal(10.00m, await _sut.GetBalanceAsync("p1", CancellationToken.None)); // tam geri eklendi.
+    }
+
+    [Fact]
+    public async Task RejectWithdrawalAsync_AlreadyProcessed_ReturnsFalse_DoesNotDoubleRefund()
+    {
+        await _sut.CreditAsync("p1", 10.00m, CancellationToken.None);
+        var request = await _sut.RequestWithdrawalAsync("p1", 4.00m, ValidAddress, CancellationToken.None);
+        await _sut.RejectWithdrawalAsync(Guid.Parse(request.Id), CancellationToken.None);
+
+        var handledAgain = await _sut.RejectWithdrawalAsync(Guid.Parse(request.Id), CancellationToken.None);
+
+        Assert.False(handledAgain);
+        Assert.Equal(10.00m, await _sut.GetBalanceAsync("p1", CancellationToken.None)); // ikinci kez eklenmedi.
+    }
+
     public void Dispose()
     {
         _db.Dispose();

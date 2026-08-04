@@ -56,10 +56,17 @@ public class PaymentConfig
     // aynı tabanla paylaşır (bkz. 06-coding-standards.md "Magic Number Yasağı").
     public double RetryBackoffMultiplier { get; set; } = 2.0;
 
-    // 🛠️ Reconciliation job — tarama aralığı, distributed lock timeout'u, geriye
-    // dönük tarama penceresi.
+    // 🛠️ Reconciliation job — tarama aralığı, distributed lock timeout'u.
     public int ReconciliationIntervalSeconds { get; set; } = 60;
     public int ReconciliationLockTimeoutSeconds { get; set; } = 30;
+
+    // 🛠️ Şu an hiçbir kod yolu tarafından okunmuyor: bu alanın tek kullanıcısı
+    // olan ReconciliationService.ProcessMatchmakingTimeoutsAsync ("lobi zaman
+    // aşımı güvence ağı") 🔒 "otomatik iade yok" kuralını ihlal ettiği için
+    // kaldırıldı (bkz. ReconciliationService.cs). Alan, docs/05-payment.md Bölüm
+    // 2.4'teki PaymentConfig alan listesiyle tutarlılık için (ve ileride kurallara
+    // uygun bir reconciliation-tabanlı temizlik ihtiyacı doğarsa hazır olsun diye)
+    // burada bırakıldı.
     public int ReconciliationScanWindowMinutes { get; set; } = 180;
 
     // 🛠️ Bölüm 2.6 — v7'de sadeleştirildi: network fee sorumluluğu havuzdan

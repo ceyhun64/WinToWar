@@ -3,8 +3,7 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5019";
+import { API_BASE_URL } from "@/lib/game/api";
 
 function DestekForm() {
   const searchParams = useSearchParams();

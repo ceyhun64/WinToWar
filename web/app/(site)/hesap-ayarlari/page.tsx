@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { getStoredDisplayName, isSignedIn, setStoredDisplayName, signOut } from "@/lib/identity";
+import { getWalletBalance } from "@/lib/payments/api";
 
 /**
  * docs/07-pages.md `/hesap-ayarlari`: `/profil`in aksine yazma işlemi içerir.
@@ -15,6 +16,8 @@ export default function HesapAyarlariPage() {
   const [displayName, setDisplayName] = useState("");
   const [saved, setSaved] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!isSignedIn()) {
@@ -31,9 +34,34 @@ export default function HesapAyarlariPage() {
     window.setTimeout(() => setSaved(false), 2000);
   }
 
-  function handleDeleteAccount() {
-    signOut();
-    router.push("/");
+  /**
+   * docs/07-pages.md `/hesap-ayarlari`: "aktif bakiyesi olan bir hesap silinemez,
+   * önce /cuzdan'dan çekim yapılması istenir." Kimlik (playerId) yalnızca
+   * localStorage'da tutulduğundan (bkz. lib/identity.ts) — silme, backend'deki
+   * Wallet kaydına erişimin kalıcı olarak kaybedilmesi demektir; bakiye
+   * kontrol edilmeden silinirse gerçek USD bakiyesi geri dönülemez şekilde
+   * erişilemez hale gelir. Bu yüzden kontrol yalnızca bir UYARI METNİ değil,
+   * gerçek bir engelleyici guard'dır.
+   */
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const wallet = await getWalletBalance();
+      if (Number(wallet.balanceUsd) > 0) {
+        setDeleteError(
+          `Bakiyenizde $${wallet.balanceUsd} var. Hesabınızı silmeden önce /cuzdan üzerinden bu bakiyeyi çekmelisiniz.`
+        );
+        setConfirmingDelete(false);
+        return;
+      }
+      signOut();
+      router.push("/");
+    } catch (err) {
+      setDeleteError(String(err));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -63,12 +91,13 @@ export default function HesapAyarlariPage() {
             /cuzdan).
           </p>
         </div>
+        {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
         {confirmingDelete ? (
           <div className="flex gap-2">
-            <Button variant="destructive" onClick={handleDeleteAccount}>
-              Evet, hesabımı sil
+            <Button variant="destructive" disabled={deleting} onClick={handleDeleteAccount}>
+              {deleting ? "Kontrol ediliyor..." : "Evet, hesabımı sil"}
             </Button>
-            <Button variant="outline" onClick={() => setConfirmingDelete(false)}>
+            <Button variant="outline" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
               Vazgeç
             </Button>
           </div>

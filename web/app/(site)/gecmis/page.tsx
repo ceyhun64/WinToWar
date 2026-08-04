@@ -55,7 +55,7 @@ export default function GecmisPage() {
               {invoices.map((invoice) => (
                 <tr key={invoice.invoiceId} className="border-b border-border">
                   <td className="py-2 text-xs text-muted-foreground">
-                    {new Date(invoice.expiresAt).toLocaleDateString("tr-TR")}
+                    {new Date(invoice.createdAt).toLocaleDateString("tr-TR")}
                   </td>
                   <td className="py-2">{invoice.matchId ? "Maça Giriş" : "Bakiye Yükleme"}</td>
                   <td className="py-2 text-right tabular-nums">${invoice.amountUsd}</td>
