@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace api.Models.Dtos;
 
 /// <summary>Statik harita verisi — client'a bir kez gönderilir (bkz. MatchesController.GetMap).</summary>
@@ -16,18 +18,52 @@ public class MapRegionDto
 }
 
 /// <summary>
-/// GameConfig'in arayüzde (maliyet gösterimi, buton disabled durumu vb.) ihtiyaç
+/// GameConfig'in arayüzde (geri sayım, oda kurma formu limitleri vb.) ihtiyaç
 /// duyulan alt kümesi. Frontend'de sayısal değerleri tekrar hardcode etmemek için
 /// tek doğruluk kaynağı (GameConfig) buradan yansıtılır; gerçek doğrulama her zaman
 /// sunucuda yapılır.
 /// </summary>
 public class GameConfigDto
 {
-    public required int SoldierCost { get; init; }
-    public required int GeneralCost { get; init; }
-    public required int NestUpgradeToLevel2Cost { get; init; }
-    public required int NestUpgradeToLevel3Cost { get; init; }
-    public required int MaxNestLevel { get; init; }
-    public required int MaxGeneralsPerPlayer { get; init; }
-    public required int MatchDurationSeconds { get; init; }
+    public required int StandardRoomPlayerCount { get; init; }
+    public required int VipRoomMinPlayers { get; init; }
+    public required int VipRoomMaxPlayers { get; init; }
+    public required int GreyRegionDefenseMin { get; init; }
+    public required int GreyRegionDefenseMax { get; init; }
+    public required int PracticeRoomDefaultPlayerCount { get; init; }
+    public required int BaseProductionPerInterval { get; init; }
+    public required int ProductionIntervalSeconds { get; init; }
+    public required int ProductionBonusPerRegion { get; init; }
+    public required int MovementDurationSeconds { get; init; }
+    public required int LobbyFillTimeoutSeconds { get; init; }
+    public required int PracticeLobbyFillTimeoutSeconds { get; init; }
+    public required int LobbyCountdownSeconds { get; init; }
+    public required int AbandonmentTimeoutSeconds { get; init; }
+    public required int ResultScreenDurationSeconds { get; init; }
+    public required string CommissionRate { get; init; }
+
+    /// <summary>
+    /// <paramref name="commissionRate"/> her zaman PaymentConfig.CommissionRate'ten
+    /// gelir — GameConfig'te ayrı bir kopya tutulmaz (tek doğruluk kaynağı, bkz.
+    /// docs/05-payment.md Bölüm 1.1).
+    /// </summary>
+    public static GameConfigDto FromGameConfig(decimal commissionRate) => new()
+    {
+        StandardRoomPlayerCount = GameConfig.StandardRoomPlayerCount,
+        VipRoomMinPlayers = GameConfig.VipRoomMinPlayers,
+        VipRoomMaxPlayers = GameConfig.VipRoomMaxPlayers,
+        GreyRegionDefenseMin = GameConfig.GreyRegionDefenseMin,
+        GreyRegionDefenseMax = GameConfig.GreyRegionDefenseMax,
+        PracticeRoomDefaultPlayerCount = GameConfig.PracticeRoomDefaultPlayerCount,
+        BaseProductionPerInterval = GameConfig.BaseProductionPerInterval,
+        ProductionIntervalSeconds = GameConfig.ProductionIntervalSeconds,
+        ProductionBonusPerRegion = GameConfig.ProductionBonusPerRegion,
+        MovementDurationSeconds = GameConfig.MovementDurationSeconds,
+        LobbyFillTimeoutSeconds = GameConfig.LobbyFillTimeoutSeconds,
+        PracticeLobbyFillTimeoutSeconds = GameConfig.PracticeLobbyFillTimeoutSeconds,
+        LobbyCountdownSeconds = GameConfig.LobbyCountdownSeconds,
+        AbandonmentTimeoutSeconds = GameConfig.AbandonmentTimeoutSeconds,
+        ResultScreenDurationSeconds = GameConfig.ResultScreenDurationSeconds,
+        CommissionRate = commissionRate.ToString(CultureInfo.InvariantCulture)
+    };
 }

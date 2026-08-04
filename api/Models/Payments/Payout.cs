@@ -1,33 +1,25 @@
 namespace api.Models.Payments;
 
-/// <summary>Bölüm 2.2.</summary>
+/// <summary>
+/// Bölüm 2.2 (v8): maç başına tam olarak bir satır — agregatör. Kendi rank'i
+/// yoktur, doğrudan webhook almaz; Status yalnızca kendi <see cref="PayoutRecipient"/>
+/// çocuklarının durumundan türetilir (bkz. PayoutService.RecalculateAggregateStatusAsync).
+/// </summary>
 public class Payout
 {
     public Guid Id { get; set; }
 
-    /// <summary>İdempotency anahtarı — bir maç için en fazla bir Payout satırı oluşur.</summary>
+    /// <summary>İdempotency anahtarı — maça yalnızca bir Payout (agregatör) satırı yazılır.</summary>
     public required string MatchId { get; set; }
 
-    public required string WinnerPlayerId { get; set; }
-
+    /// <summary>12 oyuncunun toplam girişi (yuvarlanmamış ara değerden tek seferde yuvarlanmış).</summary>
     public decimal TotalPoolLtc { get; set; }
     public decimal CommissionLtc { get; set; }
 
-    /// <summary>
-    /// 🔒 Bölüm 2.6: null olarak başlar; yalnızca BTCPay'in payout'u tamamlayıp
-    /// raporladığı gerçek (actual) fee ile bir kez doldurulur. Tahmini fee asla
-    /// buraya yazılmaz.
-    /// </summary>
-    public decimal? NetworkFeeLtc { get; set; }
-
-    /// <summary>Kazanana fiilen gönderilen tutar (tahmini fee ile hesaplanıp gönderilir, geriye dönük değişmez).</summary>
-    public decimal AmountLtc { get; set; }
+    /// <summary>Match.Winners.Count — normal senaryoda 1, beraberlikte N.</summary>
+    public int WinnerCount { get; set; }
 
     public PayoutStatus Status { get; set; } = PayoutStatus.PayoutPending;
-
-    public string? BtcPayTransactionId { get; set; }
-    public int RetryCount { get; set; }
-    public DateTimeOffset? NextRetryAt { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }

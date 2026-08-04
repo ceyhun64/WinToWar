@@ -31,7 +31,7 @@ public class FakePaymentProvider : IPaymentProvider
     }
 
     public Task<ProviderInvoice> CreateInvoiceAsync(
-        string matchId, string playerId, decimal amountLtc, DateTimeOffset expiresAt, CancellationToken cancellationToken)
+        string? matchId, string playerId, decimal amountLtc, DateTimeOffset expiresAt, CancellationToken cancellationToken)
     {
         var invoiceId = $"fake-inv-{Guid.NewGuid():N}";
         var address = GenerateFakeAddress();

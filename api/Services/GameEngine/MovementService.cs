@@ -1,12 +1,14 @@
 using api.Models;
-using Microsoft.Extensions.Logging;
 
 namespace api.Services.GameEngine;
 
 /// <summary>
-/// Ordu hareketi ve seyahat süresi hesaplama. Bölgeler arası hareket anlık değildir;
-/// süre, harita JSON'undaki komşuluk mesafesine göre hesaplanıp 5-15 saniye aralığına
-/// sıkıştırılır (bkz. GameConfig).
+/// Ordu hareketi. Bölgeler arası hareket anlık değildir; sabit bir süre kullanılır
+/// (GameConfig.MovementDurationSeconds). Saldırı yalnızca doğrudan komşu bölgeye
+/// yapılabilir; sürükle-bırak ile her gönderim tek hop'tur (docs/03-game-rules.md
+/// Bölüm 6/15 — state.io incelemesi sonrası) — client asker sayısı belirtmez,
+/// kaynak bölgenin mevcut askerinden GameConfig.MinGarrisonPerSend çıkarılarak
+/// kalanının tamamı gönderilir.
 ///
 /// Bu sınıftaki metotlar çağrılırken ilgili Match.Lock tutuluyor olmalıdır.
 /// </summary>
@@ -23,93 +25,82 @@ public class MovementService
         _logger = logger;
     }
 
-    public double GetTravelTimeSeconds(string fromRegionId, string toRegionId)
+    public Army DepartArmy(Match match, Player player, Region fromRegion, string toRegionId, DateTime now)
     {
-        var distance = _mapProvider.GetDistance(fromRegionId, toRegionId);
-        var seconds = distance * GameConfig.TravelSecondsPerDistanceUnit;
-        return Math.Clamp(seconds, GameConfig.MinTravelTimeSeconds, GameConfig.MaxTravelTimeSeconds);
-    }
-
-    public Army DepartArmy(Match match, Player player, General general, Region fromRegion, string toRegionId, int soldierCount)
-    {
-        if (fromRegion.OwnerId != player.Id || fromRegion.Nest is null)
+        if (fromRegion.OwnerId != player.Id)
         {
             throw new InvalidOperationException("Bu bölge size ait değil.");
         }
 
-        if (general.OwnerId != player.Id || general.Status != GeneralStatus.Garrisoned || general.CurrentRegionId != fromRegion.Id)
+        if (GameConfig.AttackAdjacencyOnly && !_mapProvider.AreNeighbors(fromRegion.Id, toRegionId))
         {
-            throw new InvalidOperationException("General bu bölgede saldırıya hazır değil.");
+            throw new InvalidOperationException("Saldırı yalnızca doğrudan komşu bölgeye yapılabilir.");
         }
 
+        var soldierCount = fromRegion.SoldierCount - GameConfig.MinGarrisonPerSend;
         if (soldierCount <= 0)
         {
-            throw new InvalidOperationException("Asker sayısı pozitif olmalıdır.");
+            throw new InvalidOperationException("Bu bölgede gönderilecek yeterli asker yok.");
         }
 
-        if (fromRegion.Nest.GarrisonSoldiers < soldierCount)
-        {
-            throw new InvalidOperationException("Bu bölgede yeterli asker yok.");
-        }
+        fromRegion.SoldierCount -= soldierCount;
 
-        if (!_mapProvider.AreNeighbors(fromRegion.Id, toRegionId))
-        {
-            throw new InvalidOperationException("Hedef bölge komşu değil, saldırı yalnızca komşu bölgelere yapılabilir.");
-        }
-
-        fromRegion.Nest.GarrisonSoldiers -= soldierCount;
-        general.Status = GeneralStatus.Moving;
-        general.CurrentRegionId = null;
-
-        var travelSeconds = GetTravelTimeSeconds(fromRegion.Id, toRegionId);
-        var now = DateTime.UtcNow;
         var army = new Army
         {
             Id = Guid.NewGuid().ToString("N"),
             OwnerId = player.Id,
-            GeneralId = general.Id,
             SoldierCount = soldierCount,
             FromRegionId = fromRegion.Id,
             ToRegionId = toRegionId,
             DepartedAtUtc = now,
-            ArrivesAtUtc = now.AddSeconds(travelSeconds)
+            ArrivesAtUtc = now.AddSeconds(GameConfig.MovementDurationSeconds)
         };
         match.Armies.Add(army);
 
         _logger.LogInformation(
             "Ordu yola çıktı: {From} -> {To}, asker {Soldiers}, varış {Arrival}",
-            fromRegion.Id, toRegionId, soldierCount, army.ArrivesAtUtc);
+            fromRegion.Id, army.ToRegionId, soldierCount, army.ArrivesAtUtc);
 
         return army;
     }
 
-    /// <summary>Varan orduları işler: kendi bölgesine varan takviye garnizona katılır, aksi halde çatışma çözülür.</summary>
-    public List<Army> ProcessArrivals(Match match)
+    /// <summary>
+    /// Varan orduları işler: kendi bölgesine varan takviye garnizona katılır, aksi
+    /// halde çatışma çözülür ve hayatta kalan tüm saldıranlar (varsa) yeni garrison
+    /// olur — otomatik zincirleme bir sonraki bölgeye devam etmez (tek hop). Aynı
+    /// bölgeye varan birden fazla ordu, varış sırasına göre (eşit zamanda Army.Id
+    /// sırası) tek tek işlenir — hiçbir zaman birleşik güç olarak toplanmaz.
+    /// </summary>
+    public List<Army> ProcessArrivals(Match match, DateTime now)
     {
-        var now = DateTime.UtcNow;
-        var arrived = match.Armies.Where(a => a.ArrivesAtUtc <= now).ToList();
+        var arrived = match.Armies
+            .Where(a => a.ArrivesAtUtc <= now)
+            .OrderBy(a => a.ArrivesAtUtc)
+            .ThenBy(a => a.Id, StringComparer.Ordinal)
+            .ToList();
 
         foreach (var army in arrived)
         {
             match.Armies.Remove(army);
-            var region = match.Regions[army.ToRegionId];
-            var general = match.Generals.FirstOrDefault(g => g.Id == army.GeneralId);
-            if (general is null)
+            if (!match.Regions.TryGetValue(army.ToRegionId, out var region))
             {
                 continue;
             }
 
-            if (region.OwnerId == army.OwnerId && region.Nest is not null)
+            if (region.OwnerId == army.OwnerId)
             {
-                region.Nest.GarrisonSoldiers += army.SoldierCount;
-                general.Status = GeneralStatus.Garrisoned;
-                general.CurrentRegionId = region.Id;
+                region.SoldierCount += army.SoldierCount;
                 _logger.LogInformation("Takviye ulaştı: {RegionId}, asker {Soldiers}", region.Id, army.SoldierCount);
+                continue;
             }
-            else
+
+            var owner = match.Players.FirstOrDefault(p => p.Id == army.OwnerId);
+            if (owner is null || owner.IsEliminated)
             {
-                _combatService.ResolveAttack(match, army, region, general);
+                continue;
             }
+
+            _combatService.ResolveAttack(match, army, region, now);
         }
 
         return arrived;

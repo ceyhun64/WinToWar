@@ -1,17 +1,20 @@
 using api.Hubs;
 using api.Models;
 using api.Models.Dtos;
+using api.Models.Payments;
 using api.Services.Payments;
 using api.Services.GameEngine;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 namespace api.Services;
 
 /// <summary>
-/// Aktif tüm maçlar için saniyelik oyun tick'ini yürüten arka plan servisi:
-/// ekonomi üretimi (altın + asker, kesirli birikimle), ordu varışlarının
-/// işlenmesi (MovementService'e delege — o da gerekirse CombatService'i çağırır),
-/// General yeniden basımı ve maç bitiş koşullarının kontrolü.
+/// Aktif tüm maçlar için saniyelik oyun tick'ini yürüten arka plan servisi. Maçın
+/// durumuna göre farklı iş yapar: Lobby (docs/03-game-rules.md Bölüm 7 — süre
+/// dolunca otomatik iptal YOK, tek seferlik bir "seçim zamanı" bildirimi yayınlanır),
+/// Countdown (geri sayım dolunca haritayı kurup Playing'e geçirir), Playing (ekonomi
+/// üretimi, hareket/çatışma, terk etme, maç bitiş koşulu + payout tetikleme).
 ///
 /// PeriodicTimer + CancellationToken kullanılır ki uygulama kapanırken/servis
 /// durdurulurken asılı kalan task veya kaynak sızıntısı olmasın.
@@ -20,6 +23,7 @@ public class EconomyTickService : BackgroundService
 {
     private readonly MatchManager _matchManager;
     private readonly MovementService _movementService;
+    private readonly MatchEventLogWriter _eventLogWriter;
     private readonly IHubContext<GameHub> _hubContext;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<EconomyTickService> _logger;
@@ -27,12 +31,14 @@ public class EconomyTickService : BackgroundService
     public EconomyTickService(
         MatchManager matchManager,
         MovementService movementService,
+        MatchEventLogWriter eventLogWriter,
         IHubContext<GameHub> hubContext,
         IServiceScopeFactory scopeFactory,
         ILogger<EconomyTickService> logger)
     {
         _matchManager = matchManager;
         _movementService = movementService;
+        _eventLogWriter = eventLogWriter;
         _hubContext = hubContext;
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -40,46 +46,102 @@ public class EconomyTickService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(GameConfig.EconomyTickIntervalSeconds));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(GameConfig.GameTickMs));
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
+            var now = DateTime.UtcNow;
+
             foreach (var match in _matchManager.ActiveMatches)
             {
-                if (match.Status != MatchStatus.InProgress)
-                {
-                    continue;
-                }
-
-                lock (match.Lock)
-                {
-                    Tick(match);
-                }
-
-                await BroadcastState(match, stoppingToken);
-
-                if (match.Status == MatchStatus.Finished && match.WinnerId is not null)
-                {
-                    await TriggerPayoutAsync(match.Id, match.WinnerId, stoppingToken);
-                }
+                await TickMatchAsync(match, now, stoppingToken);
             }
         }
     }
 
+    private async Task TickMatchAsync(Match match, DateTime now, CancellationToken cancellationToken)
+    {
+        switch (match.Status)
+        {
+            case MatchStatus.Lobby:
+                await TickLobbyAsync(match, now, cancellationToken);
+                break;
+
+            case MatchStatus.Countdown:
+                bool started;
+                lock (match.Lock)
+                {
+                    started = now >= match.CountdownEndsAtUtc;
+                    if (started)
+                    {
+                        _matchManager.StartPlaying(match, now);
+                    }
+                }
+                if (started)
+                {
+                    await BroadcastState(match, cancellationToken);
+                }
+                break;
+
+            case MatchStatus.Playing:
+                List<string>? winners;
+                lock (match.Lock)
+                {
+                    Tick(match, now);
+                    winners = match.Status == MatchStatus.Completed ? match.Winners.ToList() : null;
+                }
+
+                await BroadcastState(match, cancellationToken);
+
+                if (winners is { Count: > 0 } && !match.Room.IsPractice)
+                {
+                    await TriggerPayoutAsync(match.Id, winners, cancellationToken);
+                }
+                break;
+        }
+    }
+
     /// <summary>
-    /// Bölüm 3.2 (docs/05-payment.md): maç bir kazananla bittiğinde payout akışını
-    /// tetikler. PayoutService.ProcessPayoutAsync kendi içinde idempotenttir
-    /// (Payout.MatchId unique) — bu yüzden her tick'te güvenle tekrar çağrılabilir.
-    /// Ödeme modülü ayrı bir DI scope'unda (PaymentDbContext scoped) çalıştığından
-    /// burada yeni bir scope açılır.
+    /// docs/03-game-rules.md Bölüm 7: zaman aşımında otomatik iade/iptal YOK. Tek
+    /// seferlik bir "seçim zamanı geldi" bildirimi yayınlanır (LobbyTimeoutReached);
+    /// oyuncu bundan sonra istediği an GameHub.LeaveLobby ile ayrılıp refund alabilir,
+    /// ya da hiçbir şey yapmayıp beklemeye devam edebilir — sayaç sıfırlanmaz.
     /// </summary>
-    private async Task TriggerPayoutAsync(string matchId, string winnerPlayerId, CancellationToken cancellationToken)
+    private async Task TickLobbyAsync(Match match, DateTime now, CancellationToken cancellationToken)
+    {
+        bool shouldNotify;
+        var timeoutSeconds = match.Room.IsPractice ? GameConfig.PracticeLobbyFillTimeoutSeconds : GameConfig.LobbyFillTimeoutSeconds;
+
+        lock (match.Lock)
+        {
+            var timedOut = match.LobbyOpenedAtUtc is DateTime openedAt &&
+                           (now - openedAt).TotalSeconds >= timeoutSeconds;
+
+            shouldNotify = timedOut && !match.LobbyTimeoutNotified;
+            if (shouldNotify)
+            {
+                match.LobbyTimeoutNotified = true;
+            }
+        }
+
+        if (shouldNotify)
+        {
+            await _hubContext.Clients.Group(match.Id).SendAsync("LobbyTimeoutReached", cancellationToken: cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// docs/05-payment.md Bölüm 3.2: maç bir/birden fazla kazananla bittiğinde payout
+    /// akışını tetikler. PayoutService.ProcessPayoutAsync kendi içinde idempotenttir
+    /// (Payout.MatchId unique) — bu yüzden her tick'te güvenle tekrar çağrılabilir.
+    /// </summary>
+    private async Task TriggerPayoutAsync(string matchId, List<string> winnerPlayerIds, CancellationToken cancellationToken)
     {
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var payoutService = scope.ServiceProvider.GetRequiredService<PayoutService>();
-            await payoutService.ProcessPayoutAsync(matchId, winnerPlayerId, cancellationToken);
+            await payoutService.ProcessPayoutAsync(matchId, winnerPlayerIds, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -88,112 +150,114 @@ public class EconomyTickService : BackgroundService
     }
 
     /// <summary>Match.Lock altında çağrılır. Unit testler için internal (bkz. InternalsVisibleTo).</summary>
-    internal void Tick(Match match)
+    internal void Tick(Match match, DateTime now)
     {
-        ApplyProduction(match);
-        _movementService.ProcessArrivals(match);
-        ProcessGeneralRespawns(match);
-        EvaluateMatchEnd(match);
+        ApplyProduction(match, now);
+        _movementService.ProcessArrivals(match, now);
+        var newlyEliminated = ProcessAbandonment(match, now);
+        EvaluateMatchEnd(match, now, newlyEliminated);
     }
 
-    private static void ApplyProduction(Match match)
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 4: ProductionPerInterval = BaseProduction(4) +
+    /// ConqueredRegionCount × BonusPerRegion(1), her ProductionIntervalSeconds(10)
+    /// saniyede bir, yalnızca hâlâ kendi ev kalesini elinde tutan oyuncular için.
+    /// Tick saniyelik olduğundan üretim GameConfig.ProductionIntervalSeconds'a göre
+    /// kesirli birikimle işlenir — bunun için her oyuncunun son üretim zamanı yerine,
+    /// basit ve deterministik bir yaklaşım kullanılır: maç başlangıcından bu yana
+    /// geçen tam interval sayısı hesaplanıp bir önceki tick'teki tam interval
+    /// sayısıyla karşılaştırılır.
+    /// </summary>
+    private static void ApplyProduction(Match match, DateTime now)
     {
-        foreach (var region in match.Regions.Values)
-        {
-            var nest = region.Nest;
-            if (nest is null)
-            {
-                continue;
-            }
-
-            var owner = match.Players.FirstOrDefault(p => p.Id == nest.OwnerId);
-            if (owner is null)
-            {
-                continue;
-            }
-
-            var (goldPerMinute, soldiersPerMinute) = nest.Level switch
-            {
-                1 => (GameConfig.NestLevel1GoldPerMinute, GameConfig.NestLevel1SoldiersPerMinute),
-                2 => (GameConfig.NestLevel2GoldPerMinute, GameConfig.NestLevel2SoldiersPerMinute),
-                _ => (GameConfig.NestLevel3GoldPerMinute, GameConfig.NestLevel3SoldiersPerMinute)
-            };
-
-            owner.Gold += goldPerMinute / 60.0 * GameConfig.EconomyTickIntervalSeconds;
-
-            nest.SoldierAccumulator += soldiersPerMinute / 60.0 * GameConfig.EconomyTickIntervalSeconds;
-            var wholeSoldiers = (int)Math.Floor(nest.SoldierAccumulator);
-            if (wholeSoldiers > 0)
-            {
-                nest.GarrisonSoldiers += wholeSoldiers;
-                nest.SoldierAccumulator -= wholeSoldiers;
-            }
-        }
-    }
-
-    private void ProcessGeneralRespawns(Match match)
-    {
-        var now = DateTime.UtcNow;
-        foreach (var general in match.Generals.Where(g =>
-                     g.Status == GeneralStatus.Dead && g.RespawnAtUtc is not null && g.RespawnAtUtc <= now))
-        {
-            var owner = match.Players.FirstOrDefault(p => p.Id == general.OwnerId);
-            if (owner is null || owner.Gold < GameConfig.GeneralRespawnCost)
-            {
-                continue; // Yeterli altın birikene kadar her tick'te tekrar denenir.
-            }
-
-            var homeRegion = match.Regions.Values
-                .Where(r => r.OwnerId == general.OwnerId && r.Nest is not null)
-                .OrderByDescending(r => r.Nest!.Level)
-                .FirstOrDefault();
-
-            if (homeRegion is null)
-            {
-                continue; // Oyuncunun artık hiç yuvası yoksa (elenmek üzere) yeniden basım yapılmaz.
-            }
-
-            owner.Gold -= GameConfig.GeneralRespawnCost;
-            general.Status = GeneralStatus.Garrisoned;
-            general.CurrentRegionId = homeRegion.Id;
-            general.RespawnAtUtc = null;
-            _logger.LogInformation("General yeniden doğdu: {GeneralId} -> {RegionId}", general.Id, homeRegion.Id);
-        }
-    }
-
-    private void EvaluateMatchEnd(Match match)
-    {
-        var remaining = match.Players.Where(p => !p.IsEliminated).ToList();
-        if (remaining.Count <= 1)
-        {
-            match.Status = MatchStatus.Finished;
-            match.WinnerId = remaining.Count == 1 ? remaining[0].Id : null;
-            _logger.LogInformation("Maç bitti (eleme): {MatchId}, kazanan {WinnerId}", match.Id, match.WinnerId);
-            return;
-        }
-
         if (match.StartedAtUtc is not DateTime startedAt)
         {
             return;
         }
 
-        var elapsed = (DateTime.UtcNow - startedAt).TotalSeconds;
-        if (elapsed < GameConfig.MatchDurationSeconds)
+        var elapsedSeconds = (now - startedAt).TotalSeconds;
+        var previousElapsedSeconds = elapsedSeconds - GameConfig.GameTickMs / 1000.0;
+        var currentIntervals = (int)(elapsedSeconds / GameConfig.ProductionIntervalSeconds);
+        var previousIntervals = (int)(Math.Max(0, previousElapsedSeconds) / GameConfig.ProductionIntervalSeconds);
+
+        if (currentIntervals <= previousIntervals)
         {
             return;
         }
 
-        var ranking = match.Players
-            .Select(p => new { Player = p, RegionCount = match.Regions.Values.Count(r => r.OwnerId == p.Id) })
-            .OrderByDescending(x => x.RegionCount)
-            .ToList();
+        foreach (var player in match.Players.Where(p => !p.IsEliminated))
+        {
+            var homeRegion = match.Regions.Values.FirstOrDefault(r => r.IsProducingHomeRegionOf(player.Id));
+            if (homeRegion is null)
+            {
+                continue;
+            }
 
-        var topCount = ranking[0].RegionCount;
-        var topPlayers = ranking.Where(x => x.RegionCount == topCount).ToList();
+            var conqueredRegionCount = Math.Max(0, match.Regions.Values.Count(r => r.OwnerId == player.Id) - 1);
+            var production = GameConfig.BaseProductionPerInterval + conqueredRegionCount * GameConfig.ProductionBonusPerRegion;
+            // Bölüm 4/12: turtling'i anlamsız kılan tavan — sınıra ulaşınca üretim durur,
+            // sınırın altına inince (asker gönderilince) otomatik devam eder.
+            homeRegion.SoldierCount = Math.Min(GameConfig.MaxAccumulatedTroops, homeRegion.SoldierCount + production);
+        }
+    }
 
-        match.Status = MatchStatus.Finished;
-        match.WinnerId = topPlayers.Count == 1 ? topPlayers[0].Player.Id : null;
-        _logger.LogInformation("Maç bitti (süre doldu): {MatchId}, kazanan {WinnerId}", match.Id, match.WinnerId);
+    /// <summary>Bağlantısı kopan oyuncu AbandonmentTimeoutSeconds içinde dönmezse otomatik elenir.</summary>
+    private List<string> ProcessAbandonment(Match match, DateTime now)
+    {
+        var newlyEliminated = new List<string>();
+
+        foreach (var player in match.Players.Where(p => !p.IsEliminated && p.DisconnectedAtUtc is not null))
+        {
+            var elapsed = (now - player.DisconnectedAtUtc!.Value).TotalSeconds;
+            if (elapsed < GameConfig.AbandonmentTimeoutSeconds)
+            {
+                continue;
+            }
+
+            CombatService.EliminatePlayer(match, player, _eventLogWriter);
+            newlyEliminated.Add(player.Id);
+        }
+
+        return newlyEliminated;
+    }
+
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 8: maç yalnızca tek oyuncu ayakta kalınca biter
+    /// (süre sınırı yok). Son 2 oyuncu aynı tick'te elenirse (eşzamanlı eleme),
+    /// ikisi de ortak kazanan sayılır — bu yüzden "remaining == 0" durumunda kazanan
+    /// listesi bu tick'te elenenlerden (combat + abandonment) oluşturulur.
+    /// </summary>
+    private void EvaluateMatchEnd(Match match, DateTime now, List<string> newlyEliminatedByAbandonment)
+    {
+        var remaining = match.Players.Where(p => !p.IsEliminated).ToList();
+        if (remaining.Count == 1)
+        {
+            CompleteMatch(match, now, [remaining[0].Id]);
+            return;
+        }
+
+        if (remaining.Count == 0)
+        {
+            // Son 2 (veya daha fazla) oyuncu aynı tick içinde birlikte elendi.
+            var lastEliminated = match.Players.Where(p => p.IsEliminated).Select(p => p.Id).ToList();
+            CompleteMatch(match, now, lastEliminated);
+        }
+    }
+
+    private void CompleteMatch(Match match, DateTime now, List<string> winners)
+    {
+        match.Status = MatchStatus.Completed;
+        match.CompletedAtUtc = now;
+        match.Winners.Clear();
+        match.Winners.AddRange(winners);
+
+        // docs/02-architecture.md "Maç Denetim Kaydı": yalnızca gerçek para akan
+        // maçlar için gerekli (Practice hariç), ama kayıt burada koşulsuz düşülür —
+        // TriggerPayoutAsync zaten IsPractice guard'ını ayrıca uygular; audit log
+        // tarafında da aynı ayrımı tekrar etmek yerine tek yerde (burada) tutmak
+        // yeterlidir, MatchEnded event'i Practice için de zararsızdır (yalnızca
+        // /admin/maclar'da görünür, genel kullanıcıya hiç gösterilmez).
+        _eventLogWriter.Log(match.Id, MatchEventType.MatchEnded, new { winners });
     }
 
     private async Task BroadcastState(Match match, CancellationToken cancellationToken)
@@ -201,7 +265,7 @@ public class EconomyTickService : BackgroundService
         MatchStateDto dto;
         lock (match.Lock)
         {
-            dto = MatchStateMapper.ToDto(match);
+            dto = MatchStateMapper.ToDto(match, DateTime.UtcNow);
         }
 
         await _hubContext.Clients.Group(match.Id).SendAsync("MatchState", dto, cancellationToken);

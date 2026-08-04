@@ -2,32 +2,39 @@ using api.Models;
 using api.Models.Dtos;
 using api.Services;
 using api.Services.GameEngine;
+using api.Services.Payments;
 using Microsoft.AspNetCore.SignalR;
 
 namespace api.Hubs;
 
 /// <summary>
-/// Oyuncu bağlantıları, oda/maç yönetimi ve gerçek zamanlı aksiyon mesajları.
-/// Sunucu otoriterdir: her aksiyon burada doğrulanır, client'tan gelen veriye
-/// güvenilmez. Her state mutasyonu ilgili Match.Lock altında yapılır, ardından
-/// güncel durum DTO'ya map'lenip gruba yayınlanır.
+/// Oyuncu bağlantıları, maç yönetimi ve gerçek zamanlı aksiyon mesajları. Sunucu
+/// otoriterdir: her aksiyon burada doğrulanır, client'tan gelen veriye güvenilmez.
+/// Her state mutasyonu ilgili Match.Lock altında yapılır, ardından güncel durum
+/// DTO'ya map'lenip gruba yayınlanır.
+///
+/// Asker üretimi tamamen otomatik/pasif olduğundan burada bir "asker üret" aksiyonu
+/// YOKTUR; General/Upgrade kavramları WinToWar'da yoktur (bkz. docs/03-game-rules.md).
 /// </summary>
 public class GameHub : Hub
 {
     private readonly MatchManager _matchManager;
     private readonly MovementService _movementService;
-    private readonly UpgradeService _upgradeService;
+    private readonly WalletService _walletService;
+    private readonly MapProvider _mapProvider;
     private readonly ILogger<GameHub> _logger;
 
     public GameHub(
         MatchManager matchManager,
         MovementService movementService,
-        UpgradeService upgradeService,
+        WalletService walletService,
+        MapProvider mapProvider,
         ILogger<GameHub> logger)
     {
         _matchManager = matchManager;
         _movementService = movementService;
-        _upgradeService = upgradeService;
+        _walletService = walletService;
+        _mapProvider = mapProvider;
         _logger = logger;
     }
 
@@ -53,83 +60,91 @@ public class GameHub : Hub
         await BroadcastState(match);
     }
 
-    public async Task TrainSoldier(string regionId)
+    /// <summary>
+    /// docs/05-payment.md Bölüm 1.7: yalnızca Match.Status == Lobby iken izinli —
+    /// hem 5 dakikalık süre dolmadan gönüllü erken ayrılma, hem de süre dolduktan
+    /// sonra "İptal Et" seçimi aynı aksiyonla karşılanır.
+    ///
+    /// docs/05-payment.md Bölüm 1.9: bir odaya giriş her zaman Wallet.BalanceUsd
+    /// üzerinden yürür (RoomEntryService — doğrudan bakiye düşümü veya top-up-ve-katıl
+    /// invoice'ı onaylandıktan sonraki bakiye düşümü, ikisi de aynı kod yoluyla
+    /// Room.EntryFeeUsd kadar düşer). Bu yüzden "tam otomatik refund" burada zaten
+    /// düşülmüş olan Room.EntryFeeUsd'nin doğrudan Wallet'a geri eklenmesidir — ayrı
+    /// bir on-chain Refund/PaymentInvoice akışı gerekmez (o akış yalnızca ödeme daha
+    /// hiç bir Match'e/Wallet'a dönüşmeden reddedilen/süresi dolan invoice'lar içindir).
+    /// </summary>
+    public async Task LeaveLobby()
     {
-        await HandleAction(regionId, (match, player, region) =>
+        if (!_matchManager.TryGetByConnection(Context.ConnectionId, out var matchId, out var playerId) ||
+            !_matchManager.TryGetMatch(matchId, out var match))
         {
-            if (region.OwnerId != player.Id || region.Nest is null)
-            {
-                throw new InvalidOperationException("Bu bölgede size ait bir yuva yok.");
-            }
+            await Clients.Caller.SendAsync("ActionError", "Bir maça bağlı değilsiniz.");
+            return;
+        }
 
-            if (player.Gold < GameConfig.SoldierCost)
-            {
-                throw new InvalidOperationException("Yeterli altın yok.");
-            }
+        var entryFeeUsd = match.Room.EntryFeeUsd;
+        var isPractice = match.Room.IsPractice;
 
-            player.Gold -= GameConfig.SoldierCost;
-            region.Nest.GarrisonSoldiers += 1;
-        });
+        var removed = _matchManager.RemovePlayerFromLobby(match, playerId);
+        if (!removed)
+        {
+            await Clients.Caller.SendAsync("ActionError", "Lobiden şu anda ayrılamazsınız.");
+            return;
+        }
+
+        if (!isPractice && entryFeeUsd > 0)
+        {
+            try
+            {
+                await _walletService.CreditAsync(playerId, entryFeeUsd, Context.ConnectionAborted);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "LeaveLobby bakiye iadesi başarısız: {MatchId}, {PlayerId}", matchId, playerId);
+            }
+        }
+
+        await BroadcastState(match);
     }
 
-    public async Task TrainGeneral(string regionId)
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 8 "VIP masa manuel başlatma": yalnızca VIP masa
+    /// kurucusu, koltuklar dolmadan mevcut oyuncu sayısıyla maçı başlatabilir.
+    /// </summary>
+    public async Task StartVipMatchNow()
     {
-        await HandleAction(regionId, (match, player, region) =>
+        if (!_matchManager.TryGetByConnection(Context.ConnectionId, out var matchId, out var playerId) ||
+            !_matchManager.TryGetMatch(matchId, out var match))
         {
-            if (region.OwnerId != player.Id || region.Nest is null)
-            {
-                throw new InvalidOperationException("Bu bölgede size ait bir yuva yok.");
-            }
+            await Clients.Caller.SendAsync("ActionError", "Bir maça bağlı değilsiniz.");
+            return;
+        }
 
-            var aliveGenerals = match.Generals.Count(g => g.OwnerId == player.Id && g.Status != GeneralStatus.Dead);
-            if (aliveGenerals >= GameConfig.MaxGeneralsPerPlayer)
-            {
-                throw new InvalidOperationException("Maksimum General sayısına ulaşıldı.");
-            }
+        if (!_matchManager.TryForceStartVip(match, playerId, DateTime.UtcNow))
+        {
+            await Clients.Caller.SendAsync("ActionError", "Maç şimdi başlatılamıyor.");
+            return;
+        }
 
-            if (player.Gold < GameConfig.GeneralCost)
-            {
-                throw new InvalidOperationException("Yeterli altın yok.");
-            }
-
-            player.Gold -= GameConfig.GeneralCost;
-            match.Generals.Add(new General
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                OwnerId = player.Id,
-                Status = GeneralStatus.Garrisoned,
-                CurrentRegionId = region.Id
-            });
-        });
+        await BroadcastState(match);
     }
 
-    public async Task UpgradeNest(string regionId)
+    /// <summary>
+    /// Bir bölgeden doğrudan komşu bir bölgeye saldırı/takviye gönderir (docs/03-game-rules.md
+    /// Bölüm 6/15 — sürükle-bırak). Asker sayısı client'tan gelmez, sunucu kaynak bölgenin
+    /// mevcut askerinden GameConfig.MinGarrisonPerSend çıkararak kendisi hesaplar.
+    /// </summary>
+    public async Task AttackRegion(string fromRegionId, string toRegionId)
     {
-        await HandleAction(regionId, (match, player, region) =>
+        await HandleAction(fromRegionId, (match, player, region, now) =>
         {
-            _upgradeService.Upgrade(player, region);
-        });
-    }
-
-    public async Task AttackRegion(string fromRegionId, string toRegionId, string generalId, int soldierCount)
-    {
-        await HandleAction(fromRegionId, (match, player, region) =>
-        {
-            var general = match.Generals.FirstOrDefault(g => g.Id == generalId)
-                ?? throw new InvalidOperationException("General bulunamadı.");
-
-            if (general.OwnerId != player.Id)
-            {
-                throw new InvalidOperationException("Bu General size ait değil.");
-            }
-
-            _movementService.DepartArmy(match, player, general, region, toRegionId, soldierCount);
+            _movementService.DepartArmy(match, player, region, toRegionId, now);
         });
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        _matchManager.MarkDisconnected(Context.ConnectionId);
+        _matchManager.MarkDisconnected(Context.ConnectionId, DateTime.UtcNow);
         if (_matchManager.TryGetByConnection(Context.ConnectionId, out var matchId, out _) &&
             _matchManager.TryGetMatch(matchId, out var match))
         {
@@ -140,11 +155,12 @@ public class GameHub : Hub
     }
 
     /// <summary>
-    /// Ortak aksiyon iskeleti: oyuncuyu ve (gerekliyse) kaynak bölgeyi doğrular,
-    /// mutasyonu Match.Lock altında uygular, ardından güncel durumu yayınlar.
-    /// Hata durumunda sadece isteği yapan client'a ActionError gönderilir.
+    /// Ortak aksiyon iskeleti: oyuncuyu ve kaynak bölgeyi doğrular, spam koruması
+    /// (PlayerActionRateLimitPerSecond) uygular, mutasyonu Match.Lock altında
+    /// uygular, ardından güncel durumu yayınlar. Hata durumunda sadece isteği yapan
+    /// client'a ActionError gönderilir.
     /// </summary>
-    private async Task HandleAction(string regionId, Action<Match, Player, Region> action)
+    private async Task HandleAction(string regionId, Action<Match, Player, Region, DateTime> action)
     {
         if (!_matchManager.TryGetByConnection(Context.ConnectionId, out var matchId, out var playerId) ||
             !_matchManager.TryGetMatch(matchId, out var match))
@@ -160,7 +176,7 @@ public class GameHub : Hub
                 var player = match.Players.FirstOrDefault(p => p.Id == playerId)
                     ?? throw new InvalidOperationException("Oyuncu bulunamadı.");
 
-                if (match.Status != MatchStatus.InProgress)
+                if (match.Status != MatchStatus.Playing)
                 {
                     throw new InvalidOperationException("Maç şu anda devam etmiyor.");
                 }
@@ -170,12 +186,15 @@ public class GameHub : Hub
                     throw new InvalidOperationException("Elendiniz, aksiyon alamazsınız.");
                 }
 
+                EnforceRateLimit(player, DateTime.UtcNow);
+
                 if (!match.Regions.TryGetValue(regionId, out var region))
                 {
                     throw new InvalidOperationException("Bölge bulunamadı.");
                 }
 
-                action(match, player, region);
+                player.LastActionAtUtc = DateTime.UtcNow;
+                action(match, player, region, DateTime.UtcNow);
             }
         }
         catch (InvalidOperationException ex)
@@ -188,14 +207,55 @@ public class GameHub : Hub
         await BroadcastState(match);
     }
 
-    private async Task BroadcastState(Match match)
+    private static void EnforceRateLimit(Player player, DateTime now)
     {
-        MatchStateDto dto;
-        lock (match.Lock)
+        if ((now - player.ActionWindowStartUtc).TotalSeconds >= 1)
         {
-            dto = MatchStateMapper.ToDto(match);
+            player.ActionWindowStartUtc = now;
+            player.ActionCountInWindow = 0;
         }
 
-        await Clients.Group(match.Id).SendAsync("MatchState", dto);
+        player.ActionCountInWindow += 1;
+        if (player.ActionCountInWindow > GameConfig.PlayerActionRateLimitPerSecond)
+        {
+            throw new InvalidOperationException("Çok hızlı işlem yapıyorsunuz, birkaç saniye bekleyin.");
+        }
+    }
+
+    /// <summary>
+    /// docs/04-style.md Bölüm 10 "Fog of War": Room.FogOfWar açık bir odada Playing
+    /// durumdayken her oyuncuya kendi görüş alanına göre farklı, sunucu tarafında
+    /// zaten filtrelenmiş bir DTO gönderilir (tek bir ortak snapshot yayınlanmaz).
+    /// Aksi halde (fog kapalı/lobi/sonuç ekranı) tek bir DTO tüm gruba yayınlanır.
+    /// </summary>
+    private async Task BroadcastState(Match match)
+    {
+        var applyFog = match.Room.FogOfWar && match.Status == MatchStatus.Playing;
+        if (!applyFog)
+        {
+            MatchStateDto dto;
+            lock (match.Lock)
+            {
+                dto = MatchStateMapper.ToDto(match, DateTime.UtcNow);
+            }
+
+            await Clients.Group(match.Id).SendAsync("MatchState", dto);
+            return;
+        }
+
+        List<(string ConnectionId, MatchStateDto Dto)> perPlayerDtos;
+        lock (match.Lock)
+        {
+            var now = DateTime.UtcNow;
+            perPlayerDtos = match.Players
+                .Where(p => p.ConnectionId is not null)
+                .Select(p => (p.ConnectionId!, MatchStateMapper.ToDto(match, now, _mapProvider, p.Id)))
+                .ToList();
+        }
+
+        foreach (var (connectionId, dto) in perPlayerDtos)
+        {
+            await Clients.Client(connectionId).SendAsync("MatchState", dto);
+        }
     }
 }

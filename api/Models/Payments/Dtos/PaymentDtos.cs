@@ -9,13 +9,27 @@ namespace api.Models.Payments.Dtos;
 public class CreatePaymentInvoiceRequest
 {
     public required string PlayerId { get; init; }
+
+    /// <summary>Bölüm 1.9: MatchId dolu invoice'larda, onay anında oyuncuyu lobiye rezerve edebilmek için gereklidir.</summary>
+    public required string PlayerName { get; init; }
+
+    public required string PayoutAddress { get; init; }
+}
+
+public class CreateTopUpInvoiceRequest
+{
+    public required string PlayerId { get; init; }
+    public required decimal AmountUsd { get; init; }
     public required string PayoutAddress { get; init; }
 }
 
 public class PaymentInvoiceDto
 {
     public required string InvoiceId { get; init; }
-    public required string MatchId { get; init; }
+
+    /// <summary>null ise genel bakiye yükleme (top-up) invoice'ıdır (bkz. Bölüm 1.9).</summary>
+    public string? MatchId { get; init; }
+
     public required string PlayerId { get; init; }
     public required string Status { get; init; }
     public required string AmountUsd { get; init; }
@@ -25,6 +39,33 @@ public class PaymentInvoiceDto
     public required string Bip21Uri { get; init; }
     public required string ExpiresAt { get; init; }
     public required bool RateServedFromCache { get; init; }
+
+    /// <summary>Bölüm 1.9 "Lobi dolma yarış durumu" — `/odeme/[invoiceId]` bu alanı polling ile okur.</summary>
+    public required string MatchJoinOutcome { get; init; }
+}
+
+public class WalletDto
+{
+    public required string PlayerId { get; init; }
+    public required string BalanceUsd { get; init; }
+}
+
+public class RequestWithdrawalRequest
+{
+    public required string PlayerId { get; init; }
+    public required decimal AmountUsd { get; init; }
+    public required string DestinationLtcAddress { get; init; }
+}
+
+public class WithdrawalRequestDto
+{
+    public required string Id { get; init; }
+    public required string PlayerId { get; init; }
+    public required string AmountUsd { get; init; }
+    public required string AmountLtc { get; init; }
+    public required string DestinationLtcAddress { get; init; }
+    public required string Status { get; init; }
+    public required string CreatedAt { get; init; }
 }
 
 public class PaymentErrorResponse
@@ -42,18 +83,41 @@ public class PaymentConfirmedEvent
     public required string AmountLtc { get; init; }
 }
 
-/// <summary>SignalR "PayoutCompleted" event payload'ı.</summary>
+/// <summary>
+/// v8: tekil kazanan alanları yerine Recipients dizisi taşır (bkz. docs/05-payment.md
+/// Bölüm 7) — Match.Winners tek elemanlıysa dizi de tek elemanlıdır, birden fazla
+/// ortak kazanan varsa dizi o kadar eleman içerir.
+/// </summary>
+public class PayoutRecipientDto
+{
+    public required string WinnerPlayerId { get; init; }
+    public required string PayoutAddress { get; init; }
+    public required string AmountLtc { get; init; }
+    public required string Status { get; init; }
+    public string? BtcPayTransactionId { get; init; }
+}
+
+/// <summary>SignalR "PayoutCompleted" event payload'ı (v8: Recipients dizisiyle).</summary>
 public class PayoutCompletedEvent
 {
     public required string MatchId { get; init; }
-    public required string WinnerPlayerId { get; init; }
-    public required string AmountLtc { get; init; }
+    public required List<PayoutRecipientDto> Recipients { get; init; }
 }
 
-/// <summary>SignalR "RefundCompleted" event payload'ı.</summary>
-public class RefundCompletedEvent
+/// <summary>docs/07-pages.md `/mac/[matchId]`: bir maçın ödül/kazanç özeti.</summary>
+public class PayoutSummaryDto
 {
     public required string MatchId { get; init; }
+    public required string Status { get; init; }
+    public required string TotalPoolLtc { get; init; }
+    public required string CommissionLtc { get; init; }
+    public required List<PayoutRecipientDto> Recipients { get; init; }
+}
+
+/// <summary>SignalR "RefundCompleted" event payload'ı. MatchId null ise saf top-up invoice'ının iadesidir.</summary>
+public class RefundCompletedEvent
+{
+    public string? MatchId { get; init; }
     public required string PlayerId { get; init; }
     public required string AmountLtc { get; init; }
     public required string Reason { get; init; }

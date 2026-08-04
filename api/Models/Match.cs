@@ -1,10 +1,18 @@
+using api.Models.Rooms;
+
 namespace api.Models;
 
+/// <summary>
+/// docs/03-game-rules.md "Kazanma koşulu": ayrı bir Drawn durumu yoktur, beraberlik
+/// Winners'ın birden fazla eleman içermesiyle temsil edilir (Bölüm 8, eşzamanlı eleme).
+/// </summary>
 public enum MatchStatus
 {
-    WaitingForPlayers,
-    InProgress,
-    Finished
+    Lobby,
+    Countdown,
+    Playing,
+    Completed,
+    Cancelled
 }
 
 /// <summary>
@@ -15,13 +23,23 @@ public enum MatchStatus
 public class Match
 {
     public required string Id { get; init; }
+    public required Room Room { get; init; }
     public List<Player> Players { get; } = new();
     public Dictionary<string, Region> Regions { get; } = new();
-    public List<General> Generals { get; } = new();
     public List<Army> Armies { get; } = new();
-    public MatchStatus Status { get; set; } = MatchStatus.WaitingForPlayers;
+    public MatchStatus Status { get; set; } = MatchStatus.Lobby;
+
+    public DateTime? LobbyOpenedAtUtc { get; set; }
+
+    /// <summary>docs/03-game-rules.md Bölüm 7: 300 sn (Practice'te 60 sn) dolduğunda bir kez bildirilir; lobi otomatik iptal olmaz.</summary>
+    public bool LobbyTimeoutNotified { get; set; }
+
+    public DateTime? CountdownEndsAtUtc { get; set; }
     public DateTime? StartedAtUtc { get; set; }
-    public string? WinnerId { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+
+    /// <summary>Normal senaryoda tek eleman; eşzamanlı eleme durumunda ortak kazananların tamamını içerir.</summary>
+    public List<string> Winners { get; } = new();
 
     public readonly object Lock = new();
 }

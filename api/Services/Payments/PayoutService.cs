@@ -8,16 +8,22 @@ namespace api.Services.Payments;
 
 /// <summary>
 /// Bölüm 3.2 akışı + Bölüm 5.2 state machine'i + retry/backoff/jitter uygular.
+/// v8: <see cref="Payout"/> maç başına bir agregatördür, <see cref="PayoutRecipient"/>
+/// her kazanan için ayrı bir satırdır (1-N, N=1 normal senaryoda) — bkz. Bölüm 2.2.
 /// <see cref="ProcessPayoutAsync"/> maç bittiğinde (EconomyTickService hook'u
-/// üzerinden) çağrılır: havuzu hesaplar, Payout(PayoutPending) satırını
-/// kalıcılaştırır (idempotent — MatchId unique). Asıl BTCPay gönderimi ve
-/// retry döngüsü <see cref="ProcessDuePayoutsAsync"/> ile ReconciliationService'in
-/// periyodik tick'inden ayrıca yürütülür (nested-transaction sorunlarından kaçınmak için).
+/// üzerinden) çağrılır: havuzu hesaplar, Payout(PayoutPending) + her kazanan için
+/// bir PayoutRecipient(PayoutPending) satırını kalıcılaştırır (idempotent —
+/// Payout.MatchId unique). Asıl BTCPay gönderimi ve retry döngüsü
+/// <see cref="ProcessDuePayoutsAsync"/> ile ReconciliationService'in periyodik
+/// tick'inden ayrıca yürütülür (nested-transaction sorunlarından kaçınmak için).
 /// </summary>
 public class PayoutService
 {
     private readonly PaymentDbContext _db;
     private readonly IPaymentProvider _paymentProvider;
+    private readonly IPriceOracle _priceOracle;
+    private readonly WalletService _walletService;
+    private readonly Services.MatchManager _matchManager;
     private readonly PaymentConfig _config;
     private readonly TimeProvider _timeProvider;
     private readonly PaymentEventNotifier _notifier;
@@ -26,6 +32,9 @@ public class PayoutService
     public PayoutService(
         PaymentDbContext db,
         IPaymentProvider paymentProvider,
+        IPriceOracle priceOracle,
+        WalletService walletService,
+        Services.MatchManager matchManager,
         IOptions<PaymentConfig> config,
         TimeProvider timeProvider,
         PaymentEventNotifier notifier,
@@ -33,54 +42,110 @@ public class PayoutService
     {
         _db = db;
         _paymentProvider = paymentProvider;
+        _priceOracle = priceOracle;
+        _walletService = walletService;
+        _matchManager = matchManager;
         _config = config.Value;
         _timeProvider = timeProvider;
         _notifier = notifier;
         _logger = logger;
     }
 
-    public async Task ProcessPayoutAsync(string matchId, string winnerPlayerId, CancellationToken cancellationToken)
+    /// <summary>
+    /// docs/05-payment.md Bölüm 1.1: TotalPoolUsd = Room.EntryFeeUsd × Room.MaxPlayers.
+    /// 🛠️ v9 düzeltmesi: havuz artık PaymentInvoice toplamından değil, doğrudan
+    /// Room ayarlarından ve fiilen ödemesi onaylanmış oyuncu sayısından hesaplanır.
+    /// Bir oyuncu odaya PaymentInvoice hiç oluşturmadan (mevcut Wallet bakiyesinden
+    /// doğrudan, bkz. RoomEntryService) katılmış olabilir — invoice toplamına
+    /// güvenmek bu oyuncunun katkısını sessizce havuzdan düşürürdü. Kazananın ödül
+    /// adresi de aynı nedenle önce invoice'tan, yoksa Wallet'tan (bkz.
+    /// WalletService.ResolveAndSavePayoutAddressAsync) çözülür.
+    /// </summary>
+    public async Task ProcessPayoutAsync(string matchId, IReadOnlyList<string> winnerPlayerIds, CancellationToken cancellationToken)
     {
-        var alreadyExists = await _db.Payouts.AnyAsync(p => p.MatchId == matchId, cancellationToken);
-        if (alreadyExists)
+        if (winnerPlayerIds.Count == 0)
         {
-            return; // Bölüm 3.2: "Payout(MatchId=X) var mı? -> no-op" (idempotency).
-        }
-
-        var confirmedInvoices = await _db.PaymentInvoices
-            .Where(i => i.MatchId == matchId && i.Status == PaymentInvoiceStatus.Confirmed)
-            .ToListAsync(cancellationToken);
-
-        if (confirmedInvoices.Count == 0)
-        {
-            _logger.LogWarning("Maç bitti ama onaylanmış hiçbir invoice yok, payout oluşturulmuyor: {MatchId}", matchId);
             return;
         }
 
-        // Ara adımlarda Round çağrılmaz (Bölüm 2.3) — TotalPoolLtc yuvarlanmamış ara değerdir.
-        var totalPoolLtc = confirmedInvoices.Sum(i => i.AmountLtc);
-        var commissionLtc = PaymentMath.CalculateCommission(totalPoolLtc, _config.CommissionRate);
+        var alreadyExists = await _db.Payouts.AnyAsync(p => p.MatchId == matchId, cancellationToken);
+        if (alreadyExists)
+        {
+            return; // Bölüm 3.2: "Payout(MatchId=X) var mı? -> no-op" (agregatör seviyesinde idempotency).
+        }
 
-        // estimatedFee yalnızca kazanana ne kadar net gönderileceğini hesaplamak için
-        // geçici bir girdidir (Bölüm 2.6); DB'ye asla bu tahminle yazılmaz.
-        var estimatedFeeLtc = EstimateNetworkFeeLtc();
-        var amountLtc = PaymentMath.CalculatePayoutAmount(totalPoolLtc, commissionLtc, estimatedFeeLtc);
+        if (!_matchManager.TryGetMatch(matchId, out var match))
+        {
+            _logger.LogError("Payout tetiklendi ama maç artık bulunamıyor: {MatchId}", matchId);
+            return;
+        }
+
+        var confirmedPlayerCount = match.Players.Count(p => p.IsPaymentConfirmed);
+        var totalPoolUsd = match.Room.EntryFeeUsd * confirmedPlayerCount;
+        if (totalPoolUsd <= 0)
+        {
+            _logger.LogInformation("Havuz 0 (ücretsiz oda), payout oluşturulmuyor: {MatchId}", matchId);
+            return;
+        }
+
+        var quote = await _priceOracle.GetRateAsync(cancellationToken);
+        // Ara adımlarda Round çağrılmaz (Bölüm 2.3) — TotalPoolLtc yuvarlanmamış ara değerdir.
+        var totalPoolLtc = totalPoolUsd / quote.UsdPerLtc;
+        var commissionLtc = PaymentMath.CalculateCommission(totalPoolLtc, _config.CommissionRate);
+        var winnerCount = winnerPlayerIds.Count;
+
+        var confirmedInvoiceByPlayer = (await _db.PaymentInvoices
+                .Where(i => i.MatchId == matchId && i.Status == PaymentInvoiceStatus.Confirmed)
+                .ToListAsync(cancellationToken))
+            .GroupBy(i => i.PlayerId)
+            .ToDictionary(g => g.Key, g => g.First());
 
         var payout = new Payout
         {
             Id = Guid.NewGuid(),
             MatchId = matchId,
-            WinnerPlayerId = winnerPlayerId,
             TotalPoolLtc = PaymentMath.RoundForPersistence(totalPoolLtc),
             CommissionLtc = PaymentMath.RoundForPersistence(commissionLtc),
-            NetworkFeeLtc = null, // 🔒 Bölüm 2.6: yalnızca actual fee ile, reconciliation'da doldurulur.
-            AmountLtc = PaymentMath.RoundForPersistence(amountLtc),
+            WinnerCount = winnerCount,
             Status = PayoutStatus.PayoutPending,
             CreatedAt = _timeProvider.GetUtcNow()
         };
 
+        var recipients = new List<PayoutRecipient>();
+        foreach (var winnerPlayerId in winnerPlayerIds)
+        {
+            var payoutAddress = confirmedInvoiceByPlayer.TryGetValue(winnerPlayerId, out var winnerInvoice)
+                ? winnerInvoice.PayoutAddress
+                : await _walletService.GetPayoutAddressAsync(winnerPlayerId, cancellationToken);
+
+            if (payoutAddress is null)
+            {
+                _logger.LogError(
+                    "Kazananın hiçbir ödül adresi (invoice ya da Wallet'ta kayıtlı) bulunamadı, payout satırı atlanıyor: {MatchId}, {PlayerId}",
+                    matchId, winnerPlayerId);
+                continue;
+            }
+
+            // estimatedFee yalnızca bu kazanana ne kadar net gönderileceğini hesaplamak
+            // için geçici bir girdidir (Bölüm 2.6); DB'ye asla bu tahminle yazılmaz.
+            var estimatedFeeLtc = EstimateNetworkFeeLtc();
+            var amountLtc = PaymentMath.CalculatePerWinnerShareLtc(totalPoolLtc, commissionLtc, winnerCount, estimatedFeeLtc);
+
+            recipients.Add(new PayoutRecipient
+            {
+                Id = Guid.NewGuid(),
+                PayoutId = payout.Id,
+                WinnerPlayerId = winnerPlayerId,
+                PayoutAddress = payoutAddress,
+                AmountLtc = PaymentMath.RoundForPersistence(amountLtc),
+                NetworkFeeLtc = null, // 🔒 Bölüm 2.6: yalnızca actual fee ile, reconciliation'da doldurulur.
+                Status = PayoutStatus.PayoutPending
+            });
+        }
+
         await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
         _db.Payouts.Add(payout);
+        _db.PayoutRecipients.AddRange(recipients);
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
@@ -94,7 +159,7 @@ public class PayoutService
             return;
         }
 
-        _logger.LogInformation("Payout kaydı oluşturuldu: {MatchId}, kazanan={WinnerId}, tutar={AmountLtc} LTC", matchId, winnerPlayerId, payout.AmountLtc);
+        _logger.LogInformation("Payout kaydı oluşturuldu: {MatchId}, kazanan sayısı={WinnerCount}", matchId, winnerCount);
     }
 
     /// <summary>
@@ -112,97 +177,169 @@ public class PayoutService
 
         // 🛠️ Not: NextRetryAt (DateTimeOffset) karşılaştırması client-side yapılır —
         // SQLite EF Core provider'ı bu tür ifadeleri WHERE içinde translate edemiyor.
-        var candidates = await _db.Payouts
-            .Where(p => p.Status == PayoutStatus.PayoutPending && p.BtcPayTransactionId == null)
+        var candidates = await _db.PayoutRecipients
+            .Where(r => r.Status == PayoutStatus.PayoutPending && r.BtcPayTransactionId == null)
             .ToListAsync(cancellationToken);
-        var due = candidates.Where(p => p.NextRetryAt is null || p.NextRetryAt <= now).ToList();
+        var due = candidates.Where(r => r.NextRetryAt is null || r.NextRetryAt <= now).ToList();
 
-        foreach (var payout in due)
+        foreach (var recipient in due)
         {
-            await TrySendAsync(payout, cancellationToken);
+            await TrySendAsync(recipient, cancellationToken);
         }
     }
 
-    private async Task TrySendAsync(Payout payout, CancellationToken cancellationToken)
+    private async Task TrySendAsync(PayoutRecipient recipient, CancellationToken cancellationToken)
     {
-        var winnerInvoice = await _db.PaymentInvoices.AsNoTracking()
-            .Where(i => i.MatchId == payout.MatchId && i.PlayerId == payout.WinnerPlayerId && i.Status == PaymentInvoiceStatus.Confirmed)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (winnerInvoice is null)
-        {
-            _logger.LogError("Payout için kazananın onaylanmış invoice'ı bulunamadı: {PayoutId}", payout.Id);
-            return;
-        }
-
         try
         {
-            var result = await _paymentProvider.SendPayoutAsync(winnerInvoice.PayoutAddress, payout.AmountLtc, cancellationToken);
-            payout.BtcPayTransactionId = result.BtcPayTransactionId;
-            payout.Status = PayoutStatus.PayoutSent;
+            var result = await _paymentProvider.SendPayoutAsync(recipient.PayoutAddress, recipient.AmountLtc, cancellationToken);
+            recipient.BtcPayTransactionId = result.BtcPayTransactionId;
+            recipient.Status = PayoutStatus.PayoutSent;
             await _db.SaveChangesAsync(cancellationToken);
 
-            _logger.LogInformation("Payout gönderildi: {PayoutId} -> {TxId}", payout.Id, result.BtcPayTransactionId);
+            _logger.LogInformation("Payout gönderildi: {RecipientId} -> {TxId}", recipient.Id, result.BtcPayTransactionId);
         }
         catch (Exception ex)
         {
-            await HandleSendFailureAsync(payout, ex, cancellationToken);
+            await HandleSendFailureAsync(recipient, ex, cancellationToken);
         }
     }
 
-    private async Task HandleSendFailureAsync(Payout payout, Exception ex, CancellationToken cancellationToken)
+    private async Task HandleSendFailureAsync(PayoutRecipient recipient, Exception ex, CancellationToken cancellationToken)
     {
-        payout.RetryCount += 1;
+        recipient.RetryCount += 1;
         var now = _timeProvider.GetUtcNow();
 
-        if (payout.RetryCount > _config.PayoutRetryCount)
+        if (recipient.RetryCount > _config.PayoutRetryCount)
         {
-            payout.Status = PayoutStatus.Failed;
-            payout.NextRetryAt = null;
-            _logger.LogError(ex, "Payout kalıcı olarak başarısız (retry limiti aşıldı): {PayoutId}", payout.Id);
+            recipient.Status = PayoutStatus.Failed;
+            recipient.NextRetryAt = null;
+            _logger.LogError(ex, "Payout kalıcı olarak başarısız (retry limiti aşıldı): {RecipientId}", recipient.Id);
         }
         else
         {
             var jitterSeconds = Random.Shared.Next(0, Math.Max(1, _config.PayoutRetryJitterSeconds));
-            var backoffSeconds = _config.PayoutRetryBaseDelaySeconds * Math.Pow(2, payout.RetryCount - 1);
-            payout.NextRetryAt = now.AddSeconds(backoffSeconds + jitterSeconds);
-            _logger.LogWarning(ex, "Payout gönderimi başarısız, {RetryAt} zamanında tekrar denenecek: {PayoutId} (deneme {RetryCount}/{MaxRetries})",
-                payout.NextRetryAt, payout.Id, payout.RetryCount, _config.PayoutRetryCount);
+            var backoffSeconds = _config.PayoutRetryBaseDelaySeconds * Math.Pow(_config.RetryBackoffMultiplier, recipient.RetryCount - 1);
+            recipient.NextRetryAt = now.AddSeconds(backoffSeconds + jitterSeconds);
+            _logger.LogWarning(ex, "Payout gönderimi başarısız, {RetryAt} zamanında tekrar denenecek: {RecipientId} (deneme {RetryCount}/{MaxRetries})",
+                recipient.NextRetryAt, recipient.Id, recipient.RetryCount, _config.PayoutRetryCount);
+        }
+
+        if (recipient.Status == PayoutStatus.Failed)
+        {
+            await RecalculateAggregateStatusAsync(recipient.PayoutId, cancellationToken);
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>docs/07-pages.md `/mac/[matchId]`: bir maçın ödül özetini okur, henüz payout yoksa null döner.</summary>
+    public async Task<PayoutSummaryDto?> GetPayoutSummaryAsync(string matchId, CancellationToken cancellationToken)
+    {
+        var payout = await _db.Payouts.AsNoTracking().FirstOrDefaultAsync(p => p.MatchId == matchId, cancellationToken);
+        if (payout is null)
+        {
+            return null;
+        }
+
+        var recipients = await _db.PayoutRecipients.AsNoTracking()
+            .Where(r => r.PayoutId == payout.Id)
+            .ToListAsync(cancellationToken);
+
+        return new PayoutSummaryDto
+        {
+            MatchId = payout.MatchId,
+            Status = payout.Status.ToString(),
+            TotalPoolLtc = payout.TotalPoolLtc.ToString("0.00000000", CultureInfo.InvariantCulture),
+            CommissionLtc = payout.CommissionLtc.ToString("0.00000000", CultureInfo.InvariantCulture),
+            Recipients = recipients.Select(r => new PayoutRecipientDto
+            {
+                WinnerPlayerId = r.WinnerPlayerId,
+                PayoutAddress = r.PayoutAddress,
+                AmountLtc = r.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture),
+                Status = r.Status.ToString(),
+                BtcPayTransactionId = r.BtcPayTransactionId
+            }).ToList()
+        };
     }
 
     /// <summary>
     /// ReconciliationService tarafından çağrılır: PayoutSent durumundaki kayıtlar
     /// için gerçekleşen (actual) fee'yi sorgular, yalnızca null olan NetworkFeeLtc
     /// alanını bir kez doldurur ve Completed'a taşır (Bölüm 2.6, 10 — kendi
-    /// başına idempotency garantisi: zaten dolu bir kayda tekrar yazılmaz).
+    /// başına idempotency garantisi: zaten dolu bir kayda tekrar yazılmaz). N&gt;1
+    /// senaryoda her PayoutRecipient ayrı ayrı taranır, biri dolduruldu diye
+    /// diğerleri atlanmaz.
     /// </summary>
     public async Task ReconcileSentPayoutsAsync(CancellationToken cancellationToken)
     {
-        var sent = await _db.Payouts.Where(p => p.Status == PayoutStatus.PayoutSent && p.NetworkFeeLtc == null).ToListAsync(cancellationToken);
-        foreach (var payout in sent)
+        var sent = await _db.PayoutRecipients.Where(r => r.Status == PayoutStatus.PayoutSent && r.NetworkFeeLtc == null).ToListAsync(cancellationToken);
+        foreach (var recipient in sent)
         {
-            var actualFee = await _paymentProvider.GetActualNetworkFeeAsync(payout.BtcPayTransactionId!, cancellationToken);
+            var actualFee = await _paymentProvider.GetActualNetworkFeeAsync(recipient.BtcPayTransactionId!, cancellationToken);
             if (actualFee is null)
             {
                 continue; // henüz on-chain doğrulanmadı, sonraki tick'te tekrar denenir.
             }
 
-            payout.NetworkFeeLtc = PaymentMath.RoundForPersistence(actualFee.Value);
-            payout.Status = PayoutStatus.Completed;
-            payout.CompletedAt = _timeProvider.GetUtcNow();
+            recipient.NetworkFeeLtc = PaymentMath.RoundForPersistence(actualFee.Value);
+            recipient.Status = PayoutStatus.Completed;
+            recipient.CompletedAt = _timeProvider.GetUtcNow();
             await _db.SaveChangesAsync(cancellationToken);
 
+            _logger.LogInformation("Kazanana payout tamamlandı: {RecipientId}, actualFee={ActualFee}", recipient.Id, recipient.NetworkFeeLtc);
+
+            await RecalculateAggregateStatusAsync(recipient.PayoutId, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Bölüm 5.2: Payout.Status, kendi PayoutRecipient çocuklarının durumundan
+    /// türetilir — birden fazla yerde elle tekrar hesaplanmaz, tek bu metottan.
+    /// Tüm çocuklar Completed olduğunda SignalR "PayoutCompleted" (v8 PayoutDto,
+    /// Recipients dizisiyle) yayınlanır.
+    /// </summary>
+    private async Task RecalculateAggregateStatusAsync(Guid payoutId, CancellationToken cancellationToken)
+    {
+        var payout = await _db.Payouts.FirstOrDefaultAsync(p => p.Id == payoutId, cancellationToken);
+        if (payout is null)
+        {
+            return;
+        }
+
+        var recipients = await _db.PayoutRecipients.Where(r => r.PayoutId == payoutId).ToListAsync(cancellationToken);
+        var previousStatus = payout.Status;
+
+        if (recipients.All(r => r.Status == PayoutStatus.Completed))
+        {
+            payout.Status = PayoutStatus.Completed;
+            payout.CompletedAt = _timeProvider.GetUtcNow();
+        }
+        else if (recipients.Any(r => r.Status == PayoutStatus.Failed))
+        {
+            payout.Status = PayoutStatus.Failed;
+        }
+        else
+        {
+            payout.Status = PayoutStatus.PayoutPending;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        if (payout.Status == PayoutStatus.Completed && previousStatus != PayoutStatus.Completed)
+        {
             await _notifier.NotifyPayoutCompletedAsync(payout.MatchId, new PayoutCompletedEvent
             {
                 MatchId = payout.MatchId,
-                WinnerPlayerId = payout.WinnerPlayerId,
-                AmountLtc = payout.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture)
+                Recipients = recipients.Select(r => new PayoutRecipientDto
+                {
+                    WinnerPlayerId = r.WinnerPlayerId,
+                    PayoutAddress = r.PayoutAddress,
+                    AmountLtc = r.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture),
+                    Status = r.Status.ToString(),
+                    BtcPayTransactionId = r.BtcPayTransactionId
+                }).ToList()
             }, cancellationToken);
-
-            _logger.LogInformation("Payout tamamlandı: {PayoutId}, actualFee={ActualFee}", payout.Id, payout.NetworkFeeLtc);
         }
     }
 }

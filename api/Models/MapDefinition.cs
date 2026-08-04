@@ -1,25 +1,18 @@
 namespace api.Models;
 
 /// <summary>
-/// Data/map.json içinden okunan statik harita verisi. Yeni bir harita eklemek
-/// için sadece yeni bir JSON dosyası yazmak yeterli olsun diye kod içine
-/// hardcode edilmez (bkz. Bölüm 6.1).
+/// Data/map.json içinden okunan statik harita verisi. WinToWar'da başlangıç kalesi
+/// ataması sabit değil, her maçta rastgele yapılır (bkz. docs/03-game-rules.md
+/// Bölüm 3 "Rastgele kale ataması") — bu yüzden isStartingRegion/startingPlayerSlot
+/// alanları kullanılmaz, harita yalnızca kimlik/komşuluk/konum verisi taşır.
 /// </summary>
-public class MapNeighbor
-{
-    public required string RegionId { get; init; }
-    public double DistanceUnits { get; init; }
-}
-
 public class MapRegionDefinition
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
     public double X { get; init; }
     public double Y { get; init; }
-    public bool IsStartingRegion { get; init; }
-    public int? StartingPlayerSlot { get; init; }
-    public List<MapNeighbor> Neighbors { get; init; } = new();
+    public List<string> Neighbors { get; init; } = new();
 }
 
 public class MapDefinition

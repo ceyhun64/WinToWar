@@ -166,9 +166,14 @@ public class ReconciliationService : BackgroundService
     }
 
     /// <summary>
-    /// Bölüm 1.6: MatchmakingTimeoutSeconds içinde rakip bulunamazsa tam otomatik
-    /// refund. Oyun motoru state'i bellekte tutulduğundan (MatchManager) burada
-    /// yalnızca okuma amaçlı erişilir — hiçbir oyun state mutasyonu yapılmaz.
+    /// Bölüm 1.6 için ikinci katman güvence ağı: 12 kişilik lobi
+    /// GameConfig.LobbyFillTimeoutSeconds içinde dolmazsa EconomyTickService zaten
+    /// anında maçı Cancelled'a alıp refund'ları tetikler (tek kaynak: GameConfig,
+    /// bkz. docs/05-payment.md Bölüm 1.6 — PaymentConfig burada ayrı bir süre tutmaz).
+    /// Bu metot yalnızca o anlık tetiklemenin bir nedenle (ör. süreç yeniden başlatma)
+    /// kaçırdığı, hâlâ Lobby durumunda kalmış onaylanmış invoice'ları tarar.
+    /// Oyun motoru state'i bellekte tutulduğundan (MatchManager) burada yalnızca
+    /// okuma amaçlı erişilir — hiçbir oyun state mutasyonu yapılmaz.
     /// </summary>
     private async Task ProcessMatchmakingTimeoutsAsync(IServiceScope scope, CancellationToken cancellationToken)
     {
@@ -188,31 +193,32 @@ public class ReconciliationService : BackgroundService
 
         foreach (var invoice in candidates)
         {
-            if (!matchManager.TryGetMatch(invoice.MatchId, out var match))
+            // Bölüm 1.9: MatchId null olan invoice'lar (saf top-up) bu güvence ağının kapsamı dışındadır.
+            if (invoice.MatchId is null || !matchManager.TryGetMatch(invoice.MatchId, out var match))
             {
                 continue;
             }
 
-            bool stillWaitingForOpponent;
+            bool stillInLobby;
             lock (match.Lock)
             {
-                stillWaitingForOpponent = match.Status == MatchStatus.WaitingForPlayers;
+                stillInLobby = match.Status == MatchStatus.Lobby;
             }
 
-            if (!stillWaitingForOpponent)
+            if (!stillInLobby)
             {
                 continue;
             }
 
             var elapsedSinceConfirmed = (now - invoice.ConfirmedAt!.Value).TotalSeconds;
-            if (elapsedSinceConfirmed < _config.MatchmakingTimeoutSeconds)
+            if (elapsedSinceConfirmed < GameConfig.LobbyFillTimeoutSeconds)
             {
                 continue;
             }
 
             await refundService.SubmitAsync(invoice, invoice.AmountLtc, RefundReason.MatchmakingTimeout, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Eşleşme bulunamadı, refund kuyruğa alındı: invoice={InvoiceId}, maç={MatchId}", invoice.Id, invoice.MatchId);
+            _logger.LogInformation("Lobi zaman aşımı güvence ağı: refund kuyruğa alındı: invoice={InvoiceId}, maç={MatchId}", invoice.Id, invoice.MatchId);
         }
     }
 }

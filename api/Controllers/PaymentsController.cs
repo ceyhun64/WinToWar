@@ -20,13 +20,19 @@ public class PaymentsController : ControllerBase
         _paymentService = paymentService;
     }
 
+    /// <summary>
+    /// docs/05-payment.md Bölüm 1.9: yalnızca bakiye giriş ücretine yetmediğinde
+    /// çağrılır — tutar (shortfall) her zaman sunucuda hesaplanır, client'tan
+    /// gelmez (bkz. PaymentService.CreateMatchEntryInvoiceAsync).
+    /// </summary>
     [HttpPost]
     public async Task<ActionResult<PaymentInvoiceDto>> CreateInvoice(
         string matchId, [FromBody] CreatePaymentInvoiceRequest request, CancellationToken cancellationToken)
     {
         try
         {
-            var dto = await _paymentService.CreateInvoiceAsync(matchId, request.PlayerId, request.PayoutAddress, cancellationToken);
+            var dto = await _paymentService.CreateMatchEntryInvoiceAsync(
+                matchId, request.PlayerId, request.PlayerName, request.PayoutAddress, cancellationToken);
             return Ok(dto);
         }
         catch (PaymentValidationException ex)

@@ -1,0 +1,19 @@
+import { AdminGate } from "@/components/admin/AdminGate";
+import { AdminSidebar } from "@/components/admin/AdminSidebar";
+
+/** docs/07-pages.md: AdminLayout — kendi minimal header'ı ve Sidebar'ı olan, oyuncu tarafı navigasyonundan tamamen ayrı bir kabuk. */
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-1 flex-col">
+      <header className="border-b border-border bg-card px-4 py-3">
+        <span className="text-sm font-semibold">WinToWar Admin</span>
+      </header>
+      <AdminGate>
+        <div className="flex flex-1">
+          <AdminSidebar />
+          <main className="flex-1 p-4">{children}</main>
+        </div>
+      </AdminGate>
+    </div>
+  );
+}

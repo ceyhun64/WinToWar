@@ -12,9 +12,16 @@ public class PaymentConfig
 {
     public const string SectionName = "Payment";
 
-    // 🔒 Müşteri kararı (Bölüm 1.1): giriş ücreti 1 USD, komisyon %10.
-    public decimal EntryFeeUsd { get; set; } = 1.00m;
+    // 🔒 Müşteri kararı (Bölüm 1.1): komisyon %10. Giriş ücreti artık sabit değil,
+    // Room'dan gelir (Standart'ta sabit $1, VIP'de kurucunun seçtiği değer) — bu
+    // yüzden burada ayrı bir sabit EntryFeeUsd alanı yoktur (v9).
     public decimal CommissionRate { get; set; } = 0.10m;
+
+    // 🛠️ Bölüm 1.9: minimum yatırma müşterinin örneğinden ($1.00 ≈ 0.022 LTC).
+    // Minimum çekim müşteri tarafından verilmedi, tutarlılık için aynı değer
+    // varsayıldı — ❓ müşteriye doğrulatılmalı.
+    public decimal MinDepositUsd { get; set; } = 1.00m;
+    public decimal MinWithdrawalUsd { get; set; } = 1.00m;
 
     // 🛠️ Bölüm 1.2 — stale-cache üç kademeli politika süreleri (öneri değerler).
     public int PriceCacheFreshSeconds { get; set; } = 30;
@@ -28,9 +35,6 @@ public class PaymentConfig
 
     // 🔒 Bölüm 1.4 — regtest/testnet için 1 confirmation yeterli.
     public int RequiredConfirmations { get; set; } = 1;
-
-    // 🛠️ Bölüm 1.6 — eşleşme bulunamama zaman aşımı.
-    public int MatchmakingTimeoutSeconds { get; set; } = 120;
 
     // 🔒 Bölüm 8.1 — webhook imza header adı configurable, "sha256=" prefix'i
     // ise WebhookSignatureValidator içinde sabit kod olarak tutulur (Bölüm 2.4).
@@ -46,6 +50,11 @@ public class PaymentConfig
     public int RefundRetryCount { get; set; } = 5;
     public int RefundRetryBaseDelaySeconds { get; set; } = 10;
     public int RefundRetryJitterSeconds { get; set; } = 5;
+
+    // 🛠️ Üstel geri çekilme (exponential backoff) tabanı — BaseDelaySeconds *
+    // RetryBackoffMultiplier^(RetryCount-1). Payout ve Refund aynı formülü,
+    // aynı tabanla paylaşır (bkz. 06-coding-standards.md "Magic Number Yasağı").
+    public double RetryBackoffMultiplier { get; set; } = 2.0;
 
     // 🛠️ Reconciliation job — tarama aralığı, distributed lock timeout'u, geriye
     // dönük tarama penceresi.
@@ -70,6 +79,12 @@ public class PaymentConfig
     public string BtcPayStoreId { get; set; } = string.Empty;
     public string WebhookSecret { get; set; } = "dev-webhook-secret";
 
-    // 🛠️ SQLite dosya yolu — ayrı bir persistence katmanı (Bölüm "ayrı katman").
-    public string ConnectionString { get; set; } = "Data Source=payments.db";
+    // 🛠️ PostgreSQL bağlantı dizesi — ayrı bir persistence katmanı (Bölüm "ayrı
+    // katman"). Yerel geliştirme ortamında `wintowar` adlı bir veritabanına
+    // bağlanır; gerçek ortamlarda bu değer appsettings.{Environment}.json veya
+    // ortam değişkeni ile ezilir, koda hardcode edilmez (bkz. `06-coding-standards.md`
+    // "Secrets"). Testler ayrı bir SQLite in-memory bağlantısı kullanır (bkz.
+    // api.Tests/TestSupport/PaymentDbContextFactory.cs) — gerçek Postgres
+    // gerektirmeden hızlı çalışır.
+    public string ConnectionString { get; set; } = "Host=localhost;Port=5432;Database=wintowar;Username=postgres;Password=postgres";
 }

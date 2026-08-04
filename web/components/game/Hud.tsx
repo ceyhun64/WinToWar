@@ -8,13 +8,11 @@ interface HudProps {
   myPlayerId: string;
 }
 
-function formatTime(totalSeconds: number): string {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
 export function Hud({ state, myPlayerId }: HudProps) {
+  const myRegions = state.regions.filter((r) => r.ownerId === myPlayerId);
+  const myProduction =
+    4 /* GameConfig.BaseProductionPerInterval */ + Math.max(0, myRegions.length - 1);
+
   return (
     <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-card px-4 py-2">
       <div className="flex items-center gap-4">
@@ -33,17 +31,18 @@ export function Hud({ state, myPlayerId }: HudProps) {
                   {isMe ? " (sen)" : ""}
                   {player.isEliminated ? " — elendi" : !player.isConnected ? " — bağlı değil" : ""}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {isMe ? `${player.gold} altın · ` : ""}
-                  {regionCount} bölge
-                </span>
+                <span className="text-xs text-muted-foreground">{regionCount} bölge</span>
               </div>
             </div>
           );
         })}
       </div>
       <div className="text-sm font-medium tabular-nums">
-        {state.status === "Finished" ? "Maç bitti" : formatTime(state.remainingSeconds)}
+        {state.status === "Completed" || state.status === "Cancelled"
+          ? "Maç bitti"
+          : state.status === "Playing"
+            ? `Üretim: 10sn'de ${myProduction} asker`
+            : `${state.lobbyConfirmedCount}/${state.room.maxPlayers} oyuncu`}
       </div>
     </div>
   );

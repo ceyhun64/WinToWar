@@ -66,6 +66,25 @@ public class RefundService
     }
 
     /// <summary>
+    /// docs/03-game-rules.md Bölüm 1.7 (LeaveLobby) gibi tek seferlik, transaction'sız
+    /// çağrılar için: bir maç+oyuncu için onaylanmış (Confirmed) en güncel invoice'ı bulur.
+    /// </summary>
+    public async Task<PaymentInvoice?> FindConfirmedInvoiceAsync(string matchId, string playerId, CancellationToken cancellationToken)
+    {
+        var invoices = await _db.PaymentInvoices
+            .Where(i => i.MatchId == matchId && i.PlayerId == playerId && i.Status == PaymentInvoiceStatus.Confirmed)
+            .ToListAsync(cancellationToken);
+        return invoices.OrderByDescending(i => i.CreatedAt).FirstOrDefault();
+    }
+
+    /// <summary>SubmitAsync + SaveChanges — kendi transaction'ı olmayan, tek seferlik çağıranlar için (bkz. GameHub.LeaveLobby).</summary>
+    public async Task SubmitAndPersistAsync(PaymentInvoice invoice, decimal amountLtc, RefundReason reason, CancellationToken cancellationToken)
+    {
+        await SubmitAsync(invoice, amountLtc, reason, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// ReconciliationService tarafından periyodik çağrılır: gönderilmemiş veya
     /// retry zamanı gelmiş RefundPending kayıtlarını BTCPay'e gönderir.
     /// </summary>
@@ -124,7 +143,7 @@ public class RefundService
         else
         {
             var jitterSeconds = Random.Shared.Next(0, Math.Max(1, _config.RefundRetryJitterSeconds));
-            var backoffSeconds = _config.RefundRetryBaseDelaySeconds * Math.Pow(2, refund.RetryCount - 1);
+            var backoffSeconds = _config.RefundRetryBaseDelaySeconds * Math.Pow(_config.RetryBackoffMultiplier, refund.RetryCount - 1);
             refund.NextRetryAt = now.AddSeconds(backoffSeconds + jitterSeconds);
             _logger.LogWarning(ex, "Refund gönderimi başarısız, {RetryAt} zamanında tekrar denenecek: {RefundId} (deneme {RetryCount}/{MaxRetries})",
                 refund.NextRetryAt, refund.Id, refund.RetryCount, _config.RefundRetryCount);
@@ -153,8 +172,10 @@ public class RefundService
             await _db.SaveChangesAsync(cancellationToken);
 
             var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == refund.PaymentInvoiceId, cancellationToken);
-            if (invoice is not null)
+            if (invoice?.MatchId is not null)
             {
+                // MatchId null (saf top-up invoice'ının iadesi) ise bildirilecek bir
+                // SignalR maç grubu yoktur — oyuncu /cuzdan üzerinden bakiyesini görür.
                 await _notifier.NotifyRefundCompletedAsync(invoice.MatchId, new RefundCompletedEvent
                 {
                     MatchId = invoice.MatchId,

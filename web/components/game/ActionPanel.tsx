@@ -1,53 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import type { GameConfigDto, MapDto, MatchStateDto } from "@/lib/game/types";
+import type { MapDto, MatchStateDto } from "@/lib/game/types";
 
 interface ActionPanelProps {
   map: MapDto;
   state: MatchStateDto;
-  config: GameConfigDto;
   myPlayerId: string;
   selectedRegionId: string | null;
-  onTrainSoldier: (regionId: string) => void;
-  onTrainGeneral: (regionId: string) => void;
-  onUpgradeNest: (regionId: string) => void;
-  onAttack: (fromRegionId: string, toRegionId: string, generalId: string, soldierCount: number) => void;
 }
 
-export function ActionPanel({
-  map,
-  state,
-  config,
-  myPlayerId,
-  selectedRegionId,
-  onTrainSoldier,
-  onTrainGeneral,
-  onUpgradeNest,
-  onAttack,
-}: ActionPanelProps) {
-  const [attackTargetId, setAttackTargetId] = useState<string>("");
-  const [soldierCount, setSoldierCount] = useState(1);
-
-  useEffect(() => {
-    setAttackTargetId("");
-    setSoldierCount(1);
-  }, [selectedRegionId]);
-
+/**
+ * docs/04-style.md Bölüm 10 (state.io incelemesi sonrası): ActionPanel artık bir
+ * aksiyon değil, bilgi panelidir — asker gönderme tamamen GameMap/RegionNode
+ * içindeki sürükle-bırak etkileşimine taşındı (bkz. GameMap.tsx). Bu panel yalnızca
+ * seçili bölgenin salt-okunur özetini gösterir.
+ */
+export function ActionPanel({ map, state, myPlayerId, selectedRegionId }: ActionPanelProps) {
   if (!selectedRegionId) {
     return (
       <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
-        Aksiyon almak için haritadan bir bölge seçin.
+        Bilgi görmek için bir bölge seçin. Asker göndermek için kendi bölgenizi
+        doğrudan komşu bir bölgeye sürükleyip bırakın.
       </div>
     );
   }
 
   const region = map.regions.find((r) => r.id === selectedRegionId);
   const regionState = state.regions.find((r) => r.id === selectedRegionId);
-  const myPlayer = state.players.find((p) => p.id === myPlayerId);
 
-  if (!region || !regionState || !myPlayer) {
+  if (!region || !regionState) {
     return null;
   }
 
@@ -59,110 +40,53 @@ export function ActionPanel({
       <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-4">
         <h3 className="text-sm font-semibold">{region.name}</h3>
         <p className="text-sm text-muted-foreground">
-          {regionState.ownerId ? `Sahip: ${ownerName ?? "?"}` : "Nötr bölge"}
-          {regionState.nestLevel ? ` · Kale seviye ${regionState.nestLevel}` : ""}
+          {regionState.ownerId ? `Sahip: ${ownerName ?? "?"}` : "Sahipsiz bölge"}
         </p>
-        <p className="text-sm text-muted-foreground">
-          Garnizon: {regionState.ownerId ? regionState.garrisonSoldiers : regionState.neutralDefenseSoldiers} asker
-          {regionState.garrisonArchers > 0 ? `, ${regionState.garrisonArchers} okçu` : ""}
-        </p>
-        <p className="text-xs text-muted-foreground">Bu bölge size ait değil.</p>
+        <p className="text-sm text-muted-foreground">Savunma: {regionState.soldierCount} asker</p>
       </div>
     );
   }
 
-  const nestLevel = regionState.nestLevel ?? 1;
-  const canUpgrade = nestLevel < config.maxNestLevel;
-  const upgradeCost = nestLevel === 1 ? config.nestUpgradeToLevel2Cost : config.nestUpgradeToLevel3Cost;
-  const aliveGenerals = state.generals.filter((g) => g.ownerId === myPlayerId && g.status !== "Dead").length;
-  const generalHere = state.generals.find(
-    (g) => g.ownerId === myPlayerId && g.status === "Garrisoned" && g.currentRegionId === selectedRegionId
-  );
+  const myRegionCount = state.regions.filter((r) => r.ownerId === myPlayerId).length;
+  const myProduction = 4 /* GameConfig.BaseProductionPerInterval */ + Math.max(0, myRegionCount - 1);
 
-  const canAttack = Boolean(
-    generalHere && attackTargetId && soldierCount >= 1 && soldierCount <= regionState.garrisonSoldiers
-  );
+  const neighbors = region.neighborIds
+    .map((neighborId) => {
+      const neighborRegion = map.regions.find((r) => r.id === neighborId);
+      const neighborState = state.regions.find((r) => r.id === neighborId);
+      if (!neighborRegion || !neighborState) return null;
+      const neighborOwnerName = state.players.find((p) => p.id === neighborState.ownerId)?.name;
+      return { neighborRegion, neighborState, neighborOwnerName };
+    })
+    .filter((n): n is NonNullable<typeof n> => n !== null);
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-4">
       <div>
         <h3 className="text-sm font-semibold">{region.name}</h3>
-        <p className="text-sm text-muted-foreground">
-          Kale seviye {nestLevel} · {regionState.garrisonSoldiers} asker
-          {regionState.garrisonArchers > 0 ? `, ${regionState.garrisonArchers} okçu` : ""}
-        </p>
+        <p className="text-sm text-muted-foreground">{regionState.soldierCount} asker</p>
+        <p className="text-xs text-muted-foreground">Üretim: 10sn&apos;de {myProduction} asker</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={myPlayer.gold < config.soldierCost}
-          onClick={() => onTrainSoldier(selectedRegionId)}
-        >
-          Asker Üret ({config.soldierCost})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={myPlayer.gold < config.generalCost || aliveGenerals >= config.maxGeneralsPerPlayer}
-          onClick={() => onTrainGeneral(selectedRegionId)}
-        >
-          General Üret ({config.generalCost})
-        </Button>
-        {canUpgrade ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={myPlayer.gold < upgradeCost}
-            onClick={() => onUpgradeNest(selectedRegionId)}
-          >
-            Yükselt ({upgradeCost})
-          </Button>
-        ) : null}
-      </div>
-
-      {generalHere ? (
-        <div className="flex flex-col gap-2 border-t border-border pt-3">
-          <span className="text-xs font-medium text-muted-foreground">Saldırıya çık</span>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-              value={attackTargetId}
-              onChange={(e) => setAttackTargetId(e.target.value)}
-            >
-              <option value="">Hedef bölge seçin</option>
-              {region.neighborIds.map((neighborId) => {
-                const neighbor = map.regions.find((r) => r.id === neighborId);
-                return (
-                  <option key={neighborId} value={neighborId}>
-                    {neighbor?.name ?? neighborId}
-                  </option>
-                );
-              })}
-            </select>
-            <input
-              type="number"
-              min={1}
-              max={regionState.garrisonSoldiers}
-              value={soldierCount}
-              onChange={(e) => setSoldierCount(Number(e.target.value))}
-              className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
-            />
-            <Button
-              size="sm"
-              disabled={!canAttack}
-              onClick={() => onAttack(selectedRegionId, attackTargetId, generalHere.id, soldierCount)}
-            >
-              Saldır
-            </Button>
-          </div>
-        </div>
-      ) : (
+      <div className="flex flex-col gap-2 border-t border-border pt-3">
+        <span className="text-xs font-medium text-muted-foreground">Komşu Bölgeler</span>
+        <ul className="flex flex-col gap-1 text-sm">
+          {neighbors.map(({ neighborRegion, neighborState, neighborOwnerName }) => (
+            <li key={neighborRegion.id} className="flex items-center justify-between">
+              <span>{neighborRegion.name}</span>
+              <span className="text-muted-foreground">
+                {neighborState.ownerId === myPlayerId
+                  ? "Sizin"
+                  : (neighborOwnerName ?? "Sahipsiz")}{" "}
+                · {neighborState.soldierCount} asker
+              </span>
+            </li>
+          ))}
+        </ul>
         <p className="text-xs text-muted-foreground">
-          Saldırıya çıkmak için bu bölgede hazır (garnizonlu) bir General gerekir.
+          Asker göndermek için bu bölgeyi haritada bir komşusuna sürükleyip bırakın.
         </p>
-      )}
+      </div>
     </div>
   );
 }

@@ -1,30 +1,33 @@
 using api.Models.Dtos;
 using api.Services;
+using api.Services.Payments;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace api.Controllers;
 
-public record CreateMatchRequest(string PlayerName);
-
-public record JoinMatchRequest(string PlayerName);
-
-public record JoinMatchResponse(string MatchId, string PlayerId, int Slot);
-
 /// <summary>
-/// Maç oluşturma/katılma ve statik harita verisi için REST uçları. Gerçek zamanlı
-/// oyun aksiyonları ve state broadcast'i GameHub üzerinden (SignalR) yürütülür.
+/// Statik harita verisi ve GameConfig'in client'a yansıtılan alt kümesi için REST
+/// uçları. Oda/lobi oluşturma-katılma RoomsController üzerinden yürütülür; gerçek
+/// zamanlı oyun aksiyonları ve state broadcast'i GameHub üzerinden (SignalR) yürütülür.
+/// `{matchId}` uçları yalnızca bir anlık görüntü (snapshot) döner — docs/07-pages.md
+/// `/mac/[matchId]` gibi SignalR bağlantısı gerektirmeyen salt-okunur sayfalar için.
 /// </summary>
 [ApiController]
 [Route("api/matches")]
 public class MatchesController : ControllerBase
 {
-    private readonly MatchManager _matchManager;
     private readonly MapProvider _mapProvider;
+    private readonly MatchManager _matchManager;
+    private readonly PayoutService _payoutService;
+    private readonly PaymentConfig _paymentConfig;
 
-    public MatchesController(MatchManager matchManager, MapProvider mapProvider)
+    public MatchesController(MapProvider mapProvider, MatchManager matchManager, PayoutService payoutService, IOptions<PaymentConfig> paymentConfig)
     {
-        _matchManager = matchManager;
         _mapProvider = mapProvider;
+        _matchManager = matchManager;
+        _payoutService = payoutService;
+        _paymentConfig = paymentConfig.Value;
     }
 
     [HttpGet("map")]
@@ -36,52 +39,30 @@ public class MatchesController : ControllerBase
     [HttpGet("config")]
     public ActionResult<GameConfigDto> GetConfig()
     {
-        return Ok(new GameConfigDto
-        {
-            SoldierCost = GameConfig.SoldierCost,
-            GeneralCost = GameConfig.GeneralCost,
-            NestUpgradeToLevel2Cost = GameConfig.NestUpgradeToLevel2Cost,
-            NestUpgradeToLevel3Cost = GameConfig.NestUpgradeToLevel3Cost,
-            MaxNestLevel = GameConfig.MaxNestLevel,
-            MaxGeneralsPerPlayer = GameConfig.MaxGeneralsPerPlayer,
-            MatchDurationSeconds = GameConfig.MatchDurationSeconds
-        });
+        return Ok(GameConfigDto.FromGameConfig(_paymentConfig.CommissionRate));
     }
 
-    [HttpPost]
-    public ActionResult<JoinMatchResponse> CreateMatch([FromBody] CreateMatchRequest request)
+    [HttpGet("{matchId}")]
+    public ActionResult<MatchStateDto> GetMatch(string matchId)
     {
-        if (string.IsNullOrWhiteSpace(request.PlayerName))
-        {
-            return BadRequest("Oyuncu adı gereklidir.");
-        }
-
-        var match = _matchManager.CreateMatch();
-        var player = _matchManager.AddPlayer(match, request.PlayerName.Trim());
-        return Ok(new JoinMatchResponse(match.Id, player.Id, player.Slot));
-    }
-
-    [HttpPost("{matchId}/join")]
-    public ActionResult<JoinMatchResponse> JoinMatch(string matchId, [FromBody] JoinMatchRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.PlayerName))
-        {
-            return BadRequest("Oyuncu adı gereklidir.");
-        }
-
         if (!_matchManager.TryGetMatch(matchId, out var match))
         {
-            return NotFound("Maç bulunamadı.");
+            return NotFound();
         }
 
-        try
+        MatchStateDto dto;
+        lock (match.Lock)
         {
-            var player = _matchManager.AddPlayer(match, request.PlayerName.Trim());
-            return Ok(new JoinMatchResponse(match.Id, player.Id, player.Slot));
+            dto = MatchStateMapper.ToDto(match, DateTime.UtcNow);
         }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(ex.Message);
-        }
+
+        return Ok(dto);
+    }
+
+    [HttpGet("{matchId}/payout")]
+    public async Task<ActionResult<Models.Payments.Dtos.PayoutSummaryDto>> GetPayout(string matchId, CancellationToken cancellationToken)
+    {
+        var summary = await _payoutService.GetPayoutSummaryAsync(matchId, cancellationToken);
+        return summary is null ? NotFound() : Ok(summary);
     }
 }

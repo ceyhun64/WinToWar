@@ -28,6 +28,11 @@ export class GameConnection {
     this.connection.on("ActionError", handler);
   }
 
+  /** docs/03-game-rules.md Bölüm 7: lobi zaman aşımı sunucudan bir kez bildirilir (otomatik iptal/iade yok). */
+  onLobbyTimeoutReached(handler: () => void) {
+    this.connection.on("LobbyTimeoutReached", handler);
+  }
+
   /** Bölüm 3.1 (docs/05-payment.md): ödeme onaylandığında sunucudan gelen event. */
   onPaymentConfirmed(handler: PaymentConfirmedHandler) {
     this.connection.on("PaymentConfirmed", handler);
@@ -52,19 +57,22 @@ export class GameConnection {
     await this.connection.invoke("JoinMatch", matchId, playerId);
   }
 
-  async trainSoldier(regionId: string) {
-    await this.connection.invoke("TrainSoldier", regionId);
+  async leaveLobby() {
+    await this.connection.invoke("LeaveLobby");
   }
 
-  async trainGeneral(regionId: string) {
-    await this.connection.invoke("TrainGeneral", regionId);
+  /** docs/03-game-rules.md Bölüm 8: yalnızca VIP masa kurucusu, koltuklar dolmadan çağırabilir. */
+  async startVipMatchNow() {
+    await this.connection.invoke("StartVipMatchNow");
   }
 
-  async upgradeNest(regionId: string) {
-    await this.connection.invoke("UpgradeNest", regionId);
-  }
-
-  async attackRegion(fromRegionId: string, toRegionId: string, generalId: string, soldierCount: number) {
-    await this.connection.invoke("AttackRegion", fromRegionId, toRegionId, generalId, soldierCount);
+  /**
+   * Sürükle-bırak ile gönderim (docs/03-game-rules.md Bölüm 6/15): toRegionId,
+   * fromRegionId'nin doğrudan komşusu olmalı. Asker sayısı client'tan gönderilmez,
+   * sunucu kaynak bölgenin mevcut askerinden GameConfig.MinGarrisonPerSend
+   * çıkararak kendisi hesaplar.
+   */
+  async attackRegion(fromRegionId: string, toRegionId: string) {
+    await this.connection.invoke("AttackRegion", fromRegionId, toRegionId);
   }
 }

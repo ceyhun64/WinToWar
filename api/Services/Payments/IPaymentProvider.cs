@@ -17,7 +17,7 @@ public record ProviderTransferResult(string BtcPayTransactionId, decimal Estimat
 public interface IPaymentProvider
 {
     Task<ProviderInvoice> CreateInvoiceAsync(
-        string matchId,
+        string? matchId,
         string playerId,
         decimal amountLtc,
         DateTimeOffset expiresAt,

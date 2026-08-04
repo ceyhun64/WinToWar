@@ -52,3 +52,29 @@ public enum RefundReason
     Overpayment,
     Manual
 }
+
+/// <summary>Bölüm 1.9: WithdrawalRequest.Status — Refund.Status ile aynı desende, ayrı bir state machine.</summary>
+public enum WithdrawalRequestStatus
+{
+    Pending,
+    Approved,
+    Sent,
+    Completed,
+    Rejected,
+    Failed
+}
+
+/// <summary>
+/// Bölüm 1.9 "Lobi dolma yarış durumu": MatchId dolu bir invoice onaylandığında,
+/// oyuncunun fiilen o maça eklenip eklenemediğini `/odeme/[invoiceId]` sayfasının
+/// polling ile okuyabilmesi için (bkz. docs/07-pages.md — bu sayfa SignalR değil
+/// polling/webhook-tetiklemeli olarak tasarlanmıştır).
+/// </summary>
+public enum MatchJoinOutcome
+{
+    /// <summary>MatchId null (saf top-up) — hiç uygulanmaz.</summary>
+    NotApplicable,
+    Pending,
+    Joined,
+    RoomFull
+}

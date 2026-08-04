@@ -30,6 +30,9 @@ public class PaymentService
     private readonly TimeProvider _timeProvider;
     private readonly PaymentEventNotifier _notifier;
     private readonly RefundService _refundService;
+    private readonly WalletService _walletService;
+    private readonly RoomEntryService _roomEntryService;
+    private readonly Services.MatchManager _matchManager;
     private readonly ILogger<PaymentService> _logger;
 
     public PaymentService(
@@ -40,6 +43,9 @@ public class PaymentService
         TimeProvider timeProvider,
         PaymentEventNotifier notifier,
         RefundService refundService,
+        WalletService walletService,
+        RoomEntryService roomEntryService,
+        Services.MatchManager matchManager,
         ILogger<PaymentService> logger)
     {
         _db = db;
@@ -49,36 +55,77 @@ public class PaymentService
         _timeProvider = timeProvider;
         _notifier = notifier;
         _refundService = refundService;
+        _walletService = walletService;
+        _roomEntryService = roomEntryService;
+        _matchManager = matchManager;
         _logger = logger;
     }
 
-    public async Task<PaymentInvoiceDto> CreateInvoiceAsync(
-        string matchId, string playerId, string payoutAddress, CancellationToken cancellationToken)
+    /// <summary>Bölüm 1.9: genel bakiye yükleme (top-up) — MatchId null, tutar kullanıcının seçtiği tutardır.</summary>
+    public Task<PaymentInvoiceDto> CreateTopUpInvoiceAsync(
+        string playerId, decimal amountUsd, string payoutAddress, CancellationToken cancellationToken)
+    {
+        if (amountUsd < _config.MinDepositUsd)
+        {
+            throw new PaymentValidationException("BELOW_MIN_DEPOSIT", $"Minimum yatırma tutarı {_config.MinDepositUsd} USD.");
+        }
+
+        return CreateInvoiceInternalAsync(matchId: null, playerId, playerName: null, amountUsd, payoutAddress, cancellationToken);
+    }
+
+    /// <summary>
+    /// Bölüm 1.9: bakiye yetersiz olduğunda açılan "top-up-ve-katıl" invoice'ı —
+    /// tutar her zaman sunucu tarafından hesaplanır (Room.EntryFeeUsd - Wallet.BalanceUsd),
+    /// client'tan gelen bir tutara asla güvenilmez (sunucu otoriter olmalı).
+    /// </summary>
+    public async Task<PaymentInvoiceDto> CreateMatchEntryInvoiceAsync(
+        string matchId, string playerId, string playerName, string payoutAddress, CancellationToken cancellationToken)
+    {
+        if (!_matchManager.TryGetMatch(matchId, out var match))
+        {
+            throw new PaymentValidationException("MATCH_NOT_FOUND", "Oda bulunamadı.");
+        }
+
+        var balance = await _walletService.GetBalanceAsync(playerId, cancellationToken);
+        var shortfall = match.Room.EntryFeeUsd - balance;
+        if (shortfall <= 0)
+        {
+            throw new PaymentValidationException("ALREADY_SUFFICIENT_BALANCE", "Bakiyeniz zaten giriş ücretine yetiyor, doğrudan katılabilirsiniz.");
+        }
+
+        return await CreateInvoiceInternalAsync(matchId, playerId, playerName, shortfall, payoutAddress, cancellationToken);
+    }
+
+    private async Task<PaymentInvoiceDto> CreateInvoiceInternalAsync(
+        string? matchId, string playerId, string? playerName, decimal amountUsd, string payoutAddress, CancellationToken cancellationToken)
     {
         if (!AddressValidator.TryValidate(payoutAddress, out var addressFormat))
         {
             throw new PaymentValidationException("INVALID_PAYOUT_ADDRESS", "Geçersiz LTC adresi (checksum doğrulaması başarısız).");
         }
 
-        // İdempotent oluşturma: aynı maç+oyuncu için zaten bekleyen/onaylanmış bir invoice varsa onu döndür.
-        // 🛠️ Not: sıralama client-side yapılır — SQLite EF Core provider'ı ORDER BY
-        // içinde DateTimeOffset ifadelerini desteklemiyor (server-side translation kısıtı).
-        var existing = (await _db.PaymentInvoices
-                .Where(i => i.MatchId == matchId && i.PlayerId == playerId &&
-                            (i.Status == PaymentInvoiceStatus.Pending || i.Status == PaymentInvoiceStatus.Confirmed))
-                .ToListAsync(cancellationToken))
-            .OrderByDescending(i => i.CreatedAt)
-            .FirstOrDefault();
-
-        if (existing is not null && existing.Status == PaymentInvoiceStatus.Pending && existing.ExpiresAt <= _timeProvider.GetUtcNow())
+        if (matchId is not null)
         {
-            existing = null; // süresi dolmuş, yenisi oluşturulacak
-        }
+            // İdempotent oluşturma: aynı maç+oyuncu için zaten bekleyen/onaylanmış bir invoice varsa onu döndür.
+            // 🛠️ Not: sıralama client-side yapılır — SQLite EF Core provider'ı ORDER BY
+            // içinde DateTimeOffset ifadelerini desteklemiyor (server-side translation kısıtı).
+            var existing = (await _db.PaymentInvoices
+                    .Where(i => i.MatchId == matchId && i.PlayerId == playerId &&
+                                (i.Status == PaymentInvoiceStatus.Pending || i.Status == PaymentInvoiceStatus.Confirmed))
+                    .ToListAsync(cancellationToken))
+                .OrderByDescending(i => i.CreatedAt)
+                .FirstOrDefault();
 
-        if (existing is not null)
-        {
-            _logger.LogInformation("Mevcut invoice yeniden döndürülüyor: {InvoiceId}", existing.Id);
-            return ToDto(existing, null, null);
+            if (existing is not null && existing.Status == PaymentInvoiceStatus.Pending && existing.ExpiresAt <= _timeProvider.GetUtcNow())
+            {
+                existing = null; // süresi dolmuş, yenisi oluşturulacak
+            }
+
+            if (existing is not null)
+            {
+                _logger.LogInformation("Mevcut invoice yeniden döndürülüyor: {InvoiceId}", existing.Id);
+                return ToDto(existing, null, null);
+            }
         }
 
         var quote = await _priceOracle.GetRateAsync(cancellationToken);
@@ -88,7 +135,7 @@ public class PaymentService
 
         // Ara değer yuvarlanmaz (Bölüm 2.3); provider çağrısına da hemen aşağıda
         // tek seferde yuvarlanmış nihai değer verilir.
-        var rawAmountLtc = PaymentMath.CalculateAmountLtc(_config.EntryFeeUsd, quote.UsdPerLtc);
+        var rawAmountLtc = PaymentMath.CalculateAmountLtc(amountUsd, quote.UsdPerLtc);
         var amountLtc = PaymentMath.RoundForPersistence(rawAmountLtc);
 
         var providerInvoice = await _paymentProvider.CreateInvoiceAsync(matchId, playerId, amountLtc, expiresAt, cancellationToken);
@@ -98,8 +145,9 @@ public class PaymentService
             Id = Guid.NewGuid(),
             PlayerId = playerId,
             MatchId = matchId,
+            PlayerName = playerName,
             BtcPayInvoiceId = providerInvoice.BtcPayInvoiceId,
-            AmountUsd = PaymentMath.RoundUsdForPersistence(_config.EntryFeeUsd),
+            AmountUsd = PaymentMath.RoundUsdForPersistence(amountUsd),
             AmountLtc = amountLtc,
             LockedUsdPerLtc = PaymentMath.RoundForPersistence(quote.UsdPerLtc),
             PriceOracleSource = quote.Source,
@@ -108,6 +156,7 @@ public class PaymentService
             PayoutAddress = payoutAddress,
             PayoutAddressFormat = addressFormat,
             Status = PaymentInvoiceStatus.Pending,
+            MatchJoinOutcome = matchId is null ? MatchJoinOutcome.NotApplicable : MatchJoinOutcome.Pending,
             ExpiresAt = expiresAt,
             CreatedAt = now
         };
@@ -142,6 +191,40 @@ public class PaymentService
         var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken)
             ?? throw new PaymentInvoiceNotFoundException(invoiceId.ToString());
         return ToDto(invoice, null, null);
+    }
+
+    /// <summary>docs/07-pages.md `/gecmis`: bir oyuncunun ödeme geçmişi, en yeniden eskiye.</summary>
+    public async Task<List<PaymentInvoiceDto>> GetInvoiceHistoryAsync(string playerId, CancellationToken cancellationToken)
+    {
+        var invoices = await _db.PaymentInvoices.AsNoTracking()
+            .Where(i => i.PlayerId == playerId)
+            .ToListAsync(cancellationToken);
+
+        return invoices
+            .OrderByDescending(i => i.CreatedAt)
+            .Select(i => ToDto(i, null, null))
+            .ToList();
+    }
+
+    /// <summary>docs/07-pages.md `/admin/odemeler`: başarısız/süresi dolmuş invoice'lar.</summary>
+    public async Task<List<PaymentInvoiceDto>> GetFailedInvoicesAsync(CancellationToken cancellationToken)
+    {
+        var invoices = await _db.PaymentInvoices.AsNoTracking()
+            .Where(i => i.Status == PaymentInvoiceStatus.Failed || i.Status == PaymentInvoiceStatus.Expired)
+            .ToListAsync(cancellationToken);
+
+        return invoices.OrderByDescending(i => i.CreatedAt).Select(i => ToDto(i, null, null)).ToList();
+    }
+
+    /// <summary>docs/07-pages.md `/admin`: "günlük hacim" — bugün onaylanan invoice'ların toplam USD tutarı.</summary>
+    public async Task<decimal> GetTodayConfirmedVolumeUsdAsync(CancellationToken cancellationToken)
+    {
+        var todayStartUtc = DateTimeOffset.UtcNow.Date;
+        var confirmedToday = await _db.PaymentInvoices.AsNoTracking()
+            .Where(i => i.Status == PaymentInvoiceStatus.Confirmed && i.ConfirmedAt != null)
+            .ToListAsync(cancellationToken);
+
+        return confirmedToday.Where(i => i.ConfirmedAt >= todayStartUtc).Sum(i => i.AmountUsd);
     }
 
     /// <summary>
@@ -233,6 +316,13 @@ public class PaymentService
                     await ApplyToleranceAndOverpaymentAsync(invoice, payload, cancellationToken);
                     invoice.ConfirmedAt = now;
                     invoiceJustConfirmed = true;
+
+                    // Bölüm 1.9: onay anında bakiye artırılır — saf top-up'ta bu nihai
+                    // adımdır; top-up-ve-katıl'da bakiyeyi tam giriş ücretine tamamlayan
+                    // adımdır (asıl lobiye ekleme, DB commit'i garantiye alındıktan SONRA
+                    // aşağıda ayrıca yapılır — in-memory MatchManager state'i yalnızca
+                    // kalıcılaşmış bir onay üzerine değiştirilir).
+                    await _walletService.CreditAsync(invoice.PlayerId, invoice.AmountUsd, cancellationToken);
                 }
 
                 invoice.Status = incomingStatus.Value;
@@ -249,15 +339,40 @@ public class PaymentService
         // hatası verir.
         _db.Entry(processedEvent).State = EntityState.Detached;
 
-        if (invoiceJustConfirmed && invoice is not null)
+        if (invoiceJustConfirmed && invoice is not null && invoice.MatchId is not null)
         {
-            await _notifier.NotifyPaymentConfirmedAsync(invoice.MatchId, new PaymentConfirmedEvent
+            // docs/05-payment.md Bölüm 1.9: oyuncu ödeme onaylanana kadar lobiye hiç
+            // eklenmemişti (top-up-ve-katıl) — bakiye az önce tam giriş ücretine
+            // tamamlandı, şimdi asıl rezervasyon/debit denenir. Oda bu sırada
+            // dolmuş/başlamışsa (yarış durumu) RoomEntryService bakiyeyi otomatik
+            // geri ekler ve RoomFull döner — sorgu seviyesinde tek entegrasyon
+            // noktası (bkz. docs/01-workflow-rules.md 0.13 modüller arası izolasyon).
+            var entryResult = await _roomEntryService.TryJoinAsync(
+                invoice.MatchId, invoice.PlayerId, invoice.PlayerName ?? "Oyuncu", invoice.PayoutAddress, now.UtcDateTime, cancellationToken);
+
+            invoice.MatchJoinOutcome = entryResult.Outcome switch
             {
-                InvoiceId = invoice.Id.ToString(),
-                MatchId = invoice.MatchId,
-                PlayerId = invoice.PlayerId,
-                AmountLtc = invoice.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture)
-            }, cancellationToken);
+                RoomEntryOutcome.Joined => MatchJoinOutcome.Joined,
+                _ => MatchJoinOutcome.RoomFull
+            };
+            await _db.SaveChangesAsync(cancellationToken);
+
+            if (entryResult.Outcome == RoomEntryOutcome.Joined)
+            {
+                await _notifier.NotifyPaymentConfirmedAsync(invoice.MatchId, new PaymentConfirmedEvent
+                {
+                    InvoiceId = invoice.Id.ToString(),
+                    MatchId = invoice.MatchId,
+                    PlayerId = invoice.PlayerId,
+                    AmountLtc = invoice.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture)
+                }, cancellationToken);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Ödeme onaylandı ama oda dolu/başlamıştı, bakiye top-up'a döndü: {InvoiceId}, {MatchId}, {PlayerId}",
+                    invoice.Id, invoice.MatchId, invoice.PlayerId);
+            }
         }
     }
 
@@ -314,6 +429,7 @@ public class PaymentService
         ReceivingAddress = receivingAddress ?? string.Empty,
         Bip21Uri = bip21Uri ?? string.Empty,
         ExpiresAt = invoice.ExpiresAt.ToString("O", CultureInfo.InvariantCulture),
-        RateServedFromCache = invoice.RateServedFromCache
+        RateServedFromCache = invoice.RateServedFromCache,
+        MatchJoinOutcome = invoice.MatchJoinOutcome.ToString()
     };
 }

@@ -1,160 +1,88 @@
 {
   "regions": [
     {
-      "id": "clervaux",
-      "name": "Clervaux",
-      "x": 310,
-      "y": 30,
-      "isStartingRegion": true,
-      "startingPlayerSlot": 0,
-      "neighbors": [
-        { "regionId": "wiltz", "distanceUnits": 4.5 },
-        { "regionId": "diekirch", "distanceUnits": 3.0 },
-        { "regionId": "echternach", "distanceUnits": 6.4 }
-      ]
-    },
-    {
-      "id": "wiltz",
-      "name": "Wiltz",
-      "x": 140,
-      "y": 90,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "clervaux", "distanceUnits": 4.5 },
-        { "regionId": "ettelbruck", "distanceUnits": 3.8 },
-        { "regionId": "differdange", "distanceUnits": 9.8 }
-      ]
-    },
-    {
-      "id": "diekirch",
-      "name": "Diekirch",
-      "x": 300,
-      "y": 150,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "clervaux", "distanceUnits": 3.0 },
-        { "regionId": "ettelbruck", "distanceUnits": 2.3 },
-        { "regionId": "echternach", "distanceUnits": 5.2 }
-      ]
-    },
-    {
-      "id": "ettelbruck",
-      "name": "Ettelbruck",
-      "x": 230,
-      "y": 210,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "wiltz", "distanceUnits": 3.8 },
-        { "regionId": "diekirch", "distanceUnits": 2.3 },
-        { "regionId": "mersch", "distanceUnits": 2.9 }
-      ]
-    },
-    {
-      "id": "echternach",
-      "name": "Echternach",
-      "x": 500,
-      "y": 200,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "clervaux", "distanceUnits": 6.4 },
-        { "regionId": "diekirch", "distanceUnits": 5.2 },
-        { "regionId": "grevenmacher", "distanceUnits": 3.5 }
-      ]
-    },
-    {
-      "id": "mersch",
-      "name": "Mersch",
-      "x": 270,
-      "y": 320,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "ettelbruck", "distanceUnits": 2.9 },
-        { "regionId": "grevenmacher", "distanceUnits": 5.3 },
-        { "regionId": "luxembourg-city", "distanceUnits": 2.9 }
-      ]
-    },
-    {
-      "id": "grevenmacher",
-      "name": "Grevenmacher",
-      "x": 480,
-      "y": 340,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "echternach", "distanceUnits": 3.5 },
-        { "regionId": "remich", "distanceUnits": 3.5 },
-        { "regionId": "mersch", "distanceUnits": 5.3 }
-      ]
-    },
-    {
       "id": "luxembourg-city",
       "name": "Luxembourg Şehri",
       "x": 300,
-      "y": 430,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "mersch", "distanceUnits": 2.9 },
-        { "regionId": "remich", "distanceUnits": 3.4 },
-        { "regionId": "esch-sur-alzette", "distanceUnits": 4.3 }
-      ]
-    },
-    {
-      "id": "remich",
-      "name": "Remich",
-      "x": 430,
-      "y": 470,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "grevenmacher", "distanceUnits": 3.5 },
-        { "regionId": "luxembourg-city", "distanceUnits": 3.4 },
-        { "regionId": "dudelange", "distanceUnits": 4.6 }
-      ]
-    },
-    {
-      "id": "differdange",
-      "name": "Differdange",
-      "x": 110,
-      "y": 480,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "wiltz", "distanceUnits": 9.8 },
-        { "regionId": "esch-sur-alzette", "distanceUnits": 2.8 },
-        { "regionId": "dudelange", "distanceUnits": 5.6 }
-      ]
+      "y": 40,
+      "neighbors": ["esch-sur-alzette", "steinfort", "ettelbruck"]
     },
     {
       "id": "esch-sur-alzette",
       "name": "Esch-sur-Alzette",
-      "x": 190,
-      "y": 560,
-      "isStartingRegion": false,
-      "startingPlayerSlot": null,
-      "neighbors": [
-        { "regionId": "luxembourg-city", "distanceUnits": 4.3 },
-        { "regionId": "differdange", "distanceUnits": 2.8 },
-        { "regionId": "dudelange", "distanceUnits": 2.9 }
-      ]
+      "x": 75,
+      "y": 170,
+      "neighbors": ["luxembourg-city", "differdange", "diekirch"]
+    },
+    {
+      "id": "differdange",
+      "name": "Differdange",
+      "x": 75,
+      "y": 430,
+      "neighbors": ["esch-sur-alzette", "dudelange", "wiltz"]
     },
     {
       "id": "dudelange",
       "name": "Dudelange",
       "x": 300,
-      "y": 600,
-      "isStartingRegion": true,
-      "startingPlayerSlot": 1,
-      "neighbors": [
-        { "regionId": "remich", "distanceUnits": 4.6 },
-        { "regionId": "esch-sur-alzette", "distanceUnits": 2.9 },
-        { "regionId": "differdange", "distanceUnits": 5.6 }
-      ]
+      "y": 560,
+      "neighbors": ["differdange", "mersch", "echternach"]
+    },
+    {
+      "id": "mersch",
+      "name": "Mersch",
+      "x": 525,
+      "y": 430,
+      "neighbors": ["dudelange", "steinfort", "grevenmacher"]
+    },
+    {
+      "id": "steinfort",
+      "name": "Steinfort",
+      "x": 525,
+      "y": 170,
+      "neighbors": ["mersch", "luxembourg-city", "remich"]
+    },
+    {
+      "id": "ettelbruck",
+      "name": "Ettelbruck",
+      "x": 300,
+      "y": 160,
+      "neighbors": ["diekirch", "remich", "luxembourg-city"]
+    },
+    {
+      "id": "diekirch",
+      "name": "Diekirch",
+      "x": 179,
+      "y": 230,
+      "neighbors": ["ettelbruck", "wiltz", "esch-sur-alzette"]
+    },
+    {
+      "id": "wiltz",
+      "name": "Wiltz",
+      "x": 179,
+      "y": 370,
+      "neighbors": ["diekirch", "echternach", "differdange"]
+    },
+    {
+      "id": "echternach",
+      "name": "Echternach",
+      "x": 300,
+      "y": 440,
+      "neighbors": ["wiltz", "grevenmacher", "dudelange"]
+    },
+    {
+      "id": "grevenmacher",
+      "name": "Grevenmacher",
+      "x": 421,
+      "y": 370,
+      "neighbors": ["echternach", "remich", "mersch"]
+    },
+    {
+      "id": "remich",
+      "name": "Remich",
+      "x": 421,
+      "y": 230,
+      "neighbors": ["grevenmacher", "ettelbruck", "steinfort"]
     }
   ]
 }

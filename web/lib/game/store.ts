@@ -15,6 +15,7 @@ export function useGameStore(matchId: string, playerId: string) {
   const [state, setState] = useState<MatchStateDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [lobbyTimeoutReached, setLobbyTimeoutReached] = useState(false);
   const connectionRef = useRef<GameConnection | null>(null);
 
   useEffect(() => {
@@ -38,6 +39,12 @@ export function useGameStore(matchId: string, playerId: string) {
     connection.onActionError((message) => {
       if (!cancelled) {
         setError(message);
+      }
+    });
+
+    connection.onLobbyTimeoutReached(() => {
+      if (!cancelled) {
+        setLobbyTimeoutReached(true);
       }
     });
 
@@ -78,26 +85,17 @@ export function useGameStore(matchId: string, playerId: string) {
     return () => clearTimeout(timeout);
   }, [error]);
 
-  const trainSoldier = useCallback((regionId: string) => {
-    connectionRef.current?.trainSoldier(regionId).catch((err) => setError(String(err)));
+  const leaveLobby = useCallback(() => {
+    connectionRef.current?.leaveLobby().catch((err) => setError(String(err)));
   }, []);
 
-  const trainGeneral = useCallback((regionId: string) => {
-    connectionRef.current?.trainGeneral(regionId).catch((err) => setError(String(err)));
+  const attackRegion = useCallback((fromRegionId: string, toRegionId: string) => {
+    connectionRef.current?.attackRegion(fromRegionId, toRegionId).catch((err) => setError(String(err)));
   }, []);
 
-  const upgradeNest = useCallback((regionId: string) => {
-    connectionRef.current?.upgradeNest(regionId).catch((err) => setError(String(err)));
+  const startVipMatchNow = useCallback(() => {
+    connectionRef.current?.startVipMatchNow().catch((err) => setError(String(err)));
   }, []);
 
-  const attackRegion = useCallback(
-    (fromRegionId: string, toRegionId: string, generalId: string, soldierCount: number) => {
-      connectionRef.current
-        ?.attackRegion(fromRegionId, toRegionId, generalId, soldierCount)
-        .catch((err) => setError(String(err)));
-    },
-    []
-  );
-
-  return { state, error, connected, trainSoldier, trainGeneral, upgradeNest, attackRegion };
+  return { state, error, connected, lobbyTimeoutReached, leaveLobby, attackRegion, startVipMatchNow };
 }

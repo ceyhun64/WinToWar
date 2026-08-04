@@ -3,9 +3,11 @@
 
 export type PaymentInvoiceStatus = "Pending" | "Confirmed" | "Expired" | "Refunded" | "Failed";
 
+export type MatchJoinOutcome = "NotApplicable" | "Pending" | "Joined" | "RoomFull";
+
 export interface PaymentInvoiceDto {
   invoiceId: string;
-  matchId: string;
+  matchId: string | null;
   playerId: string;
   status: PaymentInvoiceStatus;
   amountUsd: string;
@@ -15,6 +17,40 @@ export interface PaymentInvoiceDto {
   bip21Uri: string;
   expiresAt: string;
   rateServedFromCache: boolean;
+  matchJoinOutcome: MatchJoinOutcome;
+}
+
+export interface PayoutRecipientDto {
+  winnerPlayerId: string;
+  payoutAddress: string;
+  amountLtc: string;
+  status: string;
+  btcPayTransactionId: string | null;
+}
+
+export interface PayoutSummaryDto {
+  matchId: string;
+  status: string;
+  totalPoolLtc: string;
+  commissionLtc: string;
+  recipients: PayoutRecipientDto[];
+}
+
+export interface WalletDto {
+  playerId: string;
+  balanceUsd: string;
+}
+
+export type WithdrawalRequestStatus = "Pending" | "Approved" | "Sent" | "Completed" | "Rejected" | "Failed";
+
+export interface WithdrawalRequestDto {
+  id: string;
+  playerId: string;
+  amountUsd: string;
+  amountLtc: string;
+  destinationLtcAddress: string;
+  status: WithdrawalRequestStatus;
+  createdAt: string;
 }
 
 export interface PaymentErrorResponse {

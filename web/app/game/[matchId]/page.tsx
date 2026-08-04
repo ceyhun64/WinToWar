@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { GameMap } from "@/components/game/GameMap";
 import { Hud } from "@/components/game/Hud";
-import { getGameConfig, getMap } from "@/lib/game/api";
+import { Button } from "@/components/ui/button";
+import { getMap } from "@/lib/game/api";
 import { useGameStore } from "@/lib/game/store";
-import type { GameConfigDto, MapDto } from "@/lib/game/types";
+import type { MapDto } from "@/lib/game/types";
 
 interface GamePageProps {
   params: Promise<{ matchId: string }>;
@@ -19,20 +20,16 @@ export default function GamePage({ params }: GamePageProps) {
 
   const [playerId, setPlayerId] = useState<string | null | undefined>(undefined);
   const [map, setMap] = useState<MapDto | null>(null);
-  const [config, setConfig] = useState<GameConfigDto | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
 
   useEffect(() => {
-    setPlayerId(window.localStorage.getItem(`porsuk:match:${matchId}:playerId`));
+    setPlayerId(window.localStorage.getItem(`wintowar:match:${matchId}:playerId`));
   }, [matchId]);
 
   useEffect(() => {
-    Promise.all([getMap(), getGameConfig()])
-      .then(([mapDto, configDto]) => {
-        setMap(mapDto);
-        setConfig(configDto);
-      })
+    getMap()
+      .then(setMap)
       .catch((err) => setLoadError(String(err)));
   }, []);
 
@@ -50,7 +47,7 @@ export default function GamePage({ params }: GamePageProps) {
         </p>
         <button
           className="text-sm font-medium underline"
-          onClick={() => router.push("/game")}
+          onClick={() => router.push("/lobi")}
         >
           Lobiye dön
         </button>
@@ -62,7 +59,7 @@ export default function GamePage({ params }: GamePageProps) {
     return <div className="flex flex-1 items-center justify-center text-sm text-destructive">{loadError}</div>;
   }
 
-  if (!map || !config || !store.state) {
+  if (!map || !store.state) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
         Maça bağlanılıyor...
@@ -71,24 +68,54 @@ export default function GamePage({ params }: GamePageProps) {
   }
 
   const { state } = store;
+  const isWinner = state.status === "Completed" && state.winners.includes(playerId);
+  const winnerNames = state.winners
+    .map((id) => state.players.find((p) => p.id === id)?.name ?? "Bilinmeyen")
+    .join(", ");
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 px-4 py-4">
       <Hud state={state} myPlayerId={playerId} />
 
-      {state.status === "WaitingForPlayers" ? (
-        <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
-          Rakip bekleniyor. Maç kodu: <span className="font-mono font-medium">{matchId}</span>
+      {state.status === "Lobby" || state.status === "Countdown" ? (
+        <div className="flex flex-col items-center gap-3 rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+          <p>
+            {state.status === "Countdown" && state.countdownRemainingSeconds !== null
+              ? `Lobi doldu, maç ${state.countdownRemainingSeconds}sn içinde başlıyor.`
+              : `Diğer oyuncular bekleniyor (${state.lobbyConfirmedCount}/${state.room.maxPlayers}).`}
+          </p>
+          <p>
+            Maç kodu: <span className="font-mono font-medium">{matchId}</span>
+          </p>
+          {store.lobbyTimeoutReached ? (
+            <p className="text-xs text-muted-foreground">
+              Eşleşme süresi doldu — beklemeye devam edebilir ya da ayrılıp ödemenizi iade alabilirsiniz.
+            </p>
+          ) : null}
+          {state.status === "Lobby" ? (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => store.leaveLobby()}>
+                {store.lobbyTimeoutReached ? "İptal Et / Bakiyeyi İade Et" : "Lobiden Ayrıl"}
+              </Button>
+              {state.room.type === "Vip" && state.room.creatorPlayerId === playerId ? (
+                <Button size="sm" onClick={() => store.startVipMatchNow()}>
+                  Şimdi Başlat
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {state.status === "Finished" ? (
+      {state.status === "Cancelled" ? (
         <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm font-medium">
-          {state.winnerId
-            ? state.winnerId === playerId
-              ? "Kazandınız!"
-              : `Kazanan: ${state.players.find((p) => p.id === state.winnerId)?.name ?? "Rakip"}`
-            : "Maç berabere bitti."}
+          Lobi zaman aşımına uğradı, ödemeniz iade edildi.
+        </div>
+      ) : null}
+
+      {state.status === "Completed" ? (
+        <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm font-medium">
+          {isWinner ? "Kazandınız!" : `Kazanan${state.winners.length > 1 ? "lar" : ""}: ${winnerNames}`}
         </div>
       ) : null}
 
@@ -99,17 +126,13 @@ export default function GamePage({ params }: GamePageProps) {
           myPlayerId={playerId}
           selectedRegionId={selectedRegionId}
           onSelectRegion={setSelectedRegionId}
+          onAttack={store.attackRegion}
         />
         <ActionPanel
           map={map}
           state={state}
-          config={config}
           myPlayerId={playerId}
           selectedRegionId={selectedRegionId}
-          onTrainSoldier={store.trainSoldier}
-          onTrainGeneral={store.trainGeneral}
-          onUpgradeNest={store.upgradeNest}
-          onAttack={store.attackRegion}
         />
       </div>
 

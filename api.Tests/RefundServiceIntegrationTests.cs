@@ -70,6 +70,53 @@ public class RefundServiceIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task FindConfirmedInvoiceAsync_ConfirmedInvoiceExists_ReturnsIt()
+    {
+        var invoice = await SeedConfirmedInvoiceAsync();
+
+        var found = await _sut.FindConfirmedInvoiceAsync("match-1", "player-1", CancellationToken.None);
+
+        Assert.NotNull(found);
+        Assert.Equal(invoice.Id, found!.Id);
+    }
+
+    [Fact]
+    public async Task FindConfirmedInvoiceAsync_NoConfirmedInvoiceForPlayer_ReturnsNull()
+    {
+        await SeedConfirmedInvoiceAsync();
+
+        var found = await _sut.FindConfirmedInvoiceAsync("match-1", "someone-else", CancellationToken.None);
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task FindConfirmedInvoiceAsync_OnlyPendingInvoiceExists_ReturnsNull()
+    {
+        _db.PaymentInvoices.Add(new PaymentInvoice
+        {
+            Id = Guid.NewGuid(),
+            MatchId = "match-2",
+            PlayerId = "player-1",
+            BtcPayInvoiceId = $"inv-{Guid.NewGuid():N}",
+            AmountUsd = 1.00m,
+            AmountLtc = 0.02247696m,
+            LockedUsdPerLtc = 44.5m,
+            PriceOracleSource = PriceOracleSource.CoinGecko,
+            PayoutAddress = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+            PayoutAddressFormat = PayoutAddressFormat.Bech32,
+            Status = PaymentInvoiceStatus.Pending, // henüz onaylanmadı — LeaveLobby bunun için refund tetiklememeli.
+            ExpiresAt = _timeProvider.GetUtcNow().AddMinutes(15),
+            CreatedAt = _timeProvider.GetUtcNow()
+        });
+        await _db.SaveChangesAsync();
+
+        var found = await _sut.FindConfirmedInvoiceAsync("match-2", "player-1", CancellationToken.None);
+
+        Assert.Null(found);
+    }
+
+    [Fact]
     public async Task FullLifecycle_PendingToSentToCompleted()
     {
         var invoice = await SeedConfirmedInvoiceAsync();

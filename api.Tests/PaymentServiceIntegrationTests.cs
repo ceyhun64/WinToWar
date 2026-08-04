@@ -1,5 +1,7 @@
 using api;
 using api.Models.Payments;
+using RoomModels = api.Models.Rooms;
+using api.Services;
 using api.Services.Payments;
 using api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +13,8 @@ namespace api.Tests;
 /// <summary>
 /// Bölüm 3.1 uçtan uca akışı: gerçek bir SQLite veritabanına (in-memory) karşı
 /// invoice oluşturma → webhook ile onaylama → idempotency + monotonluk kontrolü.
+/// docs/05-payment.md Bölüm 1.9: match-entry invoice'ları artık gerçek bir Room/Match
+/// gerektirir (tutar sunucuda Room.EntryFeeUsd - Wallet.BalanceUsd olarak hesaplanır).
 /// </summary>
 public class PaymentServiceIntegrationTests : IDisposable
 {
@@ -21,6 +25,7 @@ public class PaymentServiceIntegrationTests : IDisposable
     private readonly FakePaymentProvider _paymentProvider;
     private readonly FakeHubContext _hubContext;
     private readonly PaymentService _sut;
+    private readonly string _matchId;
 
     public PaymentServiceIntegrationTests()
     {
@@ -32,23 +37,49 @@ public class PaymentServiceIntegrationTests : IDisposable
 
         var notifier = new PaymentEventNotifier(_hubContext);
         var refundService = new RefundService(_db, _paymentProvider, Options.Create(_config), _timeProvider, notifier, NullLogger<RefundService>.Instance);
+        var mapProvider = new MapProvider(new FakeHostEnvironment(), NullLogger<MapProvider>.Instance);
+        var matchManager = new MatchManager(mapProvider, TestEventLog.Writer(), NullLogger<MatchManager>.Instance);
+        var priceOracle = new FixedPriceOracle(44.5m);
+        var walletService = new WalletService(_db, priceOracle, _paymentProvider, Options.Create(_config), _timeProvider, NullLogger<WalletService>.Instance);
+        var roomEntryService = new RoomEntryService(matchManager, walletService, NullLogger<RoomEntryService>.Instance);
+
+        var room = new RoomModels.Room
+        {
+            Id = "room-1",
+            Type = RoomModels.RoomType.Standard,
+            MaxPlayers = 4,
+            GreyRegionDefenseCount = 1,
+            FogOfWar = false,
+            EntryFeeUsd = 1.00m,
+            CreatorPlayerId = "creator"
+        };
+        var match = matchManager.CreateMatch(room, DateTimeOffset.UtcNow.UtcDateTime);
+        _matchId = match.Id;
+
         _sut = new PaymentService(
             _db,
-            new FixedPriceOracle(44.5m),
+            priceOracle,
             _paymentProvider,
             Options.Create(_config),
             _timeProvider,
             notifier,
             refundService,
+            walletService,
+            roomEntryService,
+            matchManager,
             NullLogger<PaymentService>.Instance);
     }
 
     private const string ValidAddress = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
+    private const string PlayerName = "Alice";
+
+    private Task<Models.Payments.Dtos.PaymentInvoiceDto> CreateInvoice(string playerId = "player-1", string address = ValidAddress) =>
+        _sut.CreateMatchEntryInvoiceAsync(_matchId, playerId, PlayerName, address, CancellationToken.None);
 
     [Fact]
     public async Task CreateInvoice_PersistsInvoiceWithRoundedAmountAndPendingStatus()
     {
-        var dto = await _sut.CreateInvoiceAsync("match-1", "player-1", ValidAddress, CancellationToken.None);
+        var dto = await CreateInvoice();
 
         Assert.Equal("Pending", dto.Status);
         Assert.Equal("1.00", dto.AmountUsd);
@@ -62,8 +93,8 @@ public class PaymentServiceIntegrationTests : IDisposable
     [Fact]
     public async Task CreateInvoice_CalledTwiceForSamePlayerAndMatch_ReturnsSameInvoice_Idempotent()
     {
-        var first = await _sut.CreateInvoiceAsync("match-1", "player-1", ValidAddress, CancellationToken.None);
-        var second = await _sut.CreateInvoiceAsync("match-1", "player-1", ValidAddress, CancellationToken.None);
+        var first = await CreateInvoice();
+        var second = await CreateInvoice();
 
         Assert.Equal(first.InvoiceId, second.InvoiceId);
         Assert.Equal(1, await _db.PaymentInvoices.CountAsync());
@@ -72,14 +103,13 @@ public class PaymentServiceIntegrationTests : IDisposable
     [Fact]
     public async Task InvalidPayoutAddress_ThrowsValidationException()
     {
-        await Assert.ThrowsAsync<PaymentValidationException>(() =>
-            _sut.CreateInvoiceAsync("match-1", "player-1", "not-a-real-address", CancellationToken.None));
+        await Assert.ThrowsAsync<PaymentValidationException>(() => CreateInvoice(address: "not-a-real-address"));
     }
 
     [Fact]
     public async Task Webhook_WithValidSignatureAndSettledEvent_ConfirmsInvoice_AndNotifiesSignalR()
     {
-        var invoice = await _sut.CreateInvoiceAsync("match-1", "player-1", ValidAddress, CancellationToken.None);
+        await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
 
         var payload = BuildSettledPayload("evt-1", stored.BtcPayInvoiceId, stored.AmountLtc);
@@ -90,6 +120,7 @@ public class PaymentServiceIntegrationTests : IDisposable
         var updated = await _db.PaymentInvoices.SingleAsync();
         Assert.Equal(PaymentInvoiceStatus.Confirmed, updated.Status);
         Assert.NotNull(updated.ConfirmedAt);
+        Assert.Equal(MatchJoinOutcome.Joined, updated.MatchJoinOutcome);
         Assert.Single(_hubContext.Proxy.Sent);
         Assert.Equal("PaymentConfirmed", _hubContext.Proxy.Sent[0].Method);
     }
@@ -97,7 +128,7 @@ public class PaymentServiceIntegrationTests : IDisposable
     [Fact]
     public async Task Webhook_InvalidSignature_ThrowsAndDoesNotChangeState()
     {
-        var invoice = await _sut.CreateInvoiceAsync("match-1", "player-1", ValidAddress, CancellationToken.None);
+        await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
         var payload = BuildSettledPayload("evt-1", stored.BtcPayInvoiceId, stored.AmountLtc);
 
@@ -111,7 +142,7 @@ public class PaymentServiceIntegrationTests : IDisposable
     [Fact]
     public async Task DuplicateWebhookEvent_IsNoOp_SecondDeliveryDoesNotDoubleNotify()
     {
-        await _sut.CreateInvoiceAsync("match-1", "player-1", ValidAddress, CancellationToken.None);
+        await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
         var payload = BuildSettledPayload("evt-duplicate", stored.BtcPayInvoiceId, stored.AmountLtc);
         var signature = WebhookSignatureValidator.ComputeSignatureHeader(payload, _config.WebhookSecret);
@@ -126,7 +157,7 @@ public class PaymentServiceIntegrationTests : IDisposable
     [Fact]
     public async Task OutOfOrderWebhook_AfterConfirmed_IsIgnored_StateStaysConfirmed()
     {
-        await _sut.CreateInvoiceAsync("match-1", "player-1", ValidAddress, CancellationToken.None);
+        await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
 
         var settlePayload = BuildSettledPayload("evt-settle", stored.BtcPayInvoiceId, stored.AmountLtc);

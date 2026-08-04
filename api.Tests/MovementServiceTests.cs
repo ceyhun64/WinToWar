@@ -1,5 +1,6 @@
 using api;
 using api.Models;
+using api.Models.Rooms;
 using api.Services;
 using api.Services.GameEngine;
 using api.Tests.TestSupport;
@@ -14,128 +15,114 @@ public class MovementServiceTests
 
     public MovementServiceTests()
     {
-        var combatService = new CombatService(NullLogger<CombatService>.Instance);
+        var combatService = new CombatService(TestEventLog.Writer(), NullLogger<CombatService>.Instance);
         _sut = new MovementService(_mapProvider, combatService, NullLogger<MovementService>.Instance);
     }
 
-    private (Match match, Player player, Region region, General general) CreateOwnedRegionWithGeneral(
-        string regionId, int soldiers)
+    private static (Match match, Player player, Region region) CreateOwnedRegion(string regionId, int soldiers)
     {
         var player = new Player { Id = "p1", Slot = 0, Name = "Alice" };
-        var match = new Match { Id = "m1" };
+        var match = new Match
+        {
+            Id = "m1",
+            Room = new Room
+            {
+                Id = "r1",
+                Type = RoomType.Standard,
+                MaxPlayers = 4,
+                GreyRegionDefenseCount = 1,
+                FogOfWar = false,
+                EntryFeeUsd = 1.00m,
+                CreatorPlayerId = "creator"
+            }
+        };
         match.Players.Add(player);
 
-        var region = new Region
-        {
-            Id = regionId,
-            OwnerId = player.Id,
-            Nest = new Nest { RegionId = regionId, OwnerId = player.Id, Level = 1, GarrisonSoldiers = soldiers }
-        };
+        var region = new Region { Id = regionId, OriginalOwnerId = player.Id, OwnerId = player.Id, SoldierCount = soldiers };
         match.Regions[region.Id] = region;
 
-        var general = new General { Id = "g1", OwnerId = player.Id, Status = GeneralStatus.Garrisoned, CurrentRegionId = region.Id };
-        match.Generals.Add(general);
-
-        return (match, player, region, general);
+        return (match, player, region);
     }
 
     [Fact]
-    public void GetTravelTimeSeconds_ShortDistance_IsClampedToMinimum()
+    public void DepartArmy_Success_SendsAllSoldiersMinusGarrisonAndCreatesArmyWithFixedDuration()
     {
-        // clervaux-diekirch mesafesi 3.0 * 1.5 = 4.5 -> min 5'e clamp edilir.
-        var seconds = _sut.GetTravelTimeSeconds("clervaux", "diekirch");
+        var (match, player, region) = CreateOwnedRegion("luxembourg-city", soldiers: 10);
+        var now = DateTime.UtcNow;
 
-        Assert.Equal(GameConfig.MinTravelTimeSeconds, seconds);
-    }
+        var army = _sut.DepartArmy(match, player, region, "esch-sur-alzette", now);
 
-    [Fact]
-    public void GetTravelTimeSeconds_WithinRange_IsNotClamped()
-    {
-        // clervaux-wiltz mesafesi 4.5 * 1.5 = 6.75, [5,15] aralığında.
-        var seconds = _sut.GetTravelTimeSeconds("clervaux", "wiltz");
-
-        Assert.Equal(6.75, seconds, precision: 3);
-    }
-
-    [Fact]
-    public void DepartArmy_Success_DeductsGarrisonAndCreatesArmy()
-    {
-        var (match, player, region, general) = CreateOwnedRegionWithGeneral("clervaux", soldiers: 10);
-
-        var army = _sut.DepartArmy(match, player, general, region, "wiltz", soldierCount: 4);
-
-        Assert.Equal(6, region.Nest!.GarrisonSoldiers);
-        Assert.Equal(GeneralStatus.Moving, general.Status);
-        Assert.Null(general.CurrentRegionId);
+        Assert.Equal(GameConfig.MinGarrisonPerSend, region.SoldierCount);
         Assert.Contains(army, match.Armies);
-        Assert.Equal(4, army.SoldierCount);
+        Assert.Equal(10 - GameConfig.MinGarrisonPerSend, army.SoldierCount);
+        Assert.Equal("esch-sur-alzette", army.ToRegionId);
+        Assert.Equal(now.AddSeconds(GameConfig.MovementDurationSeconds), army.ArrivesAtUtc);
     }
 
     [Fact]
     public void DepartArmy_NotNeighbor_Throws()
     {
-        var (match, player, region, general) = CreateOwnedRegionWithGeneral("clervaux", soldiers: 10);
+        var (match, player, region) = CreateOwnedRegion("luxembourg-city", soldiers: 10);
 
         Assert.Throws<InvalidOperationException>(() =>
-            _sut.DepartArmy(match, player, general, region, "dudelange", soldierCount: 4));
+            _sut.DepartArmy(match, player, region, "remich", DateTime.UtcNow));
     }
 
     [Fact]
-    public void DepartArmy_InsufficientSoldiers_Throws()
+    public void DepartArmy_NotEnoughSoldiersBeyondGarrison_Throws()
     {
-        var (match, player, region, general) = CreateOwnedRegionWithGeneral("clervaux", soldiers: 2);
+        var (match, player, region) = CreateOwnedRegion("luxembourg-city", soldiers: GameConfig.MinGarrisonPerSend);
 
         Assert.Throws<InvalidOperationException>(() =>
-            _sut.DepartArmy(match, player, general, region, "wiltz", soldierCount: 4));
+            _sut.DepartArmy(match, player, region, "esch-sur-alzette", DateTime.UtcNow));
     }
 
     [Fact]
-    public void DepartArmy_GeneralNotGarrisonedHere_Throws()
+    public void DepartArmy_NotOwner_Throws()
     {
-        var (match, player, region, general) = CreateOwnedRegionWithGeneral("clervaux", soldiers: 10);
-        general.Status = GeneralStatus.Moving;
+        var (match, _, region) = CreateOwnedRegion("luxembourg-city", soldiers: 10);
+        var other = new Player { Id = "p2", Slot = 1, Name = "Bob" };
 
         Assert.Throws<InvalidOperationException>(() =>
-            _sut.DepartArmy(match, player, general, region, "wiltz", soldierCount: 4));
+            _sut.DepartArmy(match, other, region, "esch-sur-alzette", DateTime.UtcNow));
     }
 
     [Fact]
     public void ProcessArrivals_ReinforcementToOwnRegion_MergesGarrisonWithoutCombat()
     {
-        var (match, player, region, general) = CreateOwnedRegionWithGeneral("clervaux", soldiers: 10);
-        var targetRegion = new Region
-        {
-            Id = "wiltz",
-            OwnerId = player.Id,
-            Nest = new Nest { RegionId = "wiltz", OwnerId = player.Id, Level = 1, GarrisonSoldiers = 1 }
-        };
+        var (match, player, region) = CreateOwnedRegion("luxembourg-city", soldiers: 10);
+        var targetRegion = new Region { Id = "esch-sur-alzette", OriginalOwnerId = player.Id, OwnerId = player.Id, SoldierCount = 1 };
         match.Regions[targetRegion.Id] = targetRegion;
 
-        var army = _sut.DepartArmy(match, player, general, region, "wiltz", soldierCount: 4);
-        army.ArrivesAtUtc = DateTime.UtcNow.AddSeconds(-1); // varmış gibi ayarla
+        var now = DateTime.UtcNow;
+        var army = _sut.DepartArmy(match, player, region, "esch-sur-alzette", now);
+        army.ArrivesAtUtc = now.AddSeconds(-1);
 
-        var arrived = _sut.ProcessArrivals(match);
+        var arrived = _sut.ProcessArrivals(match, DateTime.UtcNow);
 
         Assert.Single(arrived);
-        Assert.Equal(5, targetRegion.Nest!.GarrisonSoldiers);
-        Assert.Equal(GeneralStatus.Garrisoned, general.Status);
-        Assert.Equal("wiltz", general.CurrentRegionId);
+        Assert.Equal(1 + (10 - GameConfig.MinGarrisonPerSend), targetRegion.SoldierCount);
         Assert.Empty(match.Armies);
     }
 
     [Fact]
-    public void ProcessArrivals_ToNeutralRegion_TriggersCombatCapture()
+    public void ProcessArrivals_ToEnemyRegion_TriggersCombatCaptureAndAllSurvivorsBecomeGarrison()
     {
-        var (match, player, region, general) = CreateOwnedRegionWithGeneral("clervaux", soldiers: 10);
-        var neutralRegion = new Region { Id = "wiltz", NeutralDefenseSoldiers = GameConfig.NeutralRegionDefenseSoldiers };
-        match.Regions[neutralRegion.Id] = neutralRegion;
+        var (match, player, region) = CreateOwnedRegion("luxembourg-city", soldiers: 5);
+        var enemy = new Player { Id = "p2", Slot = 1, Name = "Bob" };
+        match.Players.Add(enemy);
+        var enemyRegion = new Region { Id = "esch-sur-alzette", OriginalOwnerId = enemy.Id, OwnerId = enemy.Id, SoldierCount = 1 };
+        match.Regions[enemyRegion.Id] = enemyRegion;
 
-        var army = _sut.DepartArmy(match, player, general, region, "wiltz", soldierCount: 4);
-        army.ArrivesAtUtc = DateTime.UtcNow.AddSeconds(-1);
+        var now = DateTime.UtcNow;
+        var army = _sut.DepartArmy(match, player, region, "esch-sur-alzette", now);
+        army.ArrivesAtUtc = now.AddSeconds(-1);
 
-        _sut.ProcessArrivals(match);
+        _sut.ProcessArrivals(match, DateTime.UtcNow);
 
-        Assert.Equal(player.Id, neutralRegion.OwnerId);
-        Assert.Equal(GeneralStatus.Garrisoned, general.Status);
+        // 5 asker gönderilir (5 - MinGarrisonPerSend=1 -> 4 gönderilir), savunma 1'i yener,
+        // kalan 3 asker garrison olarak kalır (otomatik zincirleme yok, tek hop).
+        Assert.Equal(player.Id, enemyRegion.OwnerId);
+        Assert.Equal(3, enemyRegion.SoldierCount);
     }
 }

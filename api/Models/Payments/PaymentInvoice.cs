@@ -12,7 +12,15 @@ public class PaymentInvoice
 {
     public Guid Id { get; set; }
     public required string PlayerId { get; set; }
-    public required string MatchId { get; set; }
+
+    /// <summary>🛠️ v9 (Bölüm 1.9): null ise genel bakiye yükleme (top-up); dolu ise maça giriş/top-up-ve-katıl invoice'ı.</summary>
+    public string? MatchId { get; set; }
+
+    /// <summary>🛠️ MatchId dolu olduğunda, onay anında (henüz lobiye eklenmemiş) oyuncuyu rezerve edebilmek için gereklidir.</summary>
+    public string? PlayerName { get; set; }
+
+    /// <summary>Bölüm 1.9 "Lobi dolma yarış durumu" — yalnızca MatchId dolu invoice'larda anlamlıdır.</summary>
+    public MatchJoinOutcome MatchJoinOutcome { get; set; } = MatchJoinOutcome.NotApplicable;
 
     /// <summary>İdempotency anahtarı — BTCPay tarafındaki invoice id'si.</summary>
     public required string BtcPayInvoiceId { get; set; }
