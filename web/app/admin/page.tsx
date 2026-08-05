@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { getAdminMetrics, type AdminMetrics } from "@/lib/admin/api";
 
 export default function AdminHomePage() {
@@ -19,18 +20,24 @@ export default function AdminHomePage() {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {metrics ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-md border border-border bg-card p-4">
-            <span className="text-xs text-muted-foreground">Bekleyen çekim talebi</span>
-            <p className="text-2xl font-semibold tabular-nums">{metrics.pendingWithdrawalCount}</p>
-          </div>
-          <div className="rounded-md border border-border bg-card p-4">
-            <span className="text-xs text-muted-foreground">Aktif maç</span>
-            <p className="text-2xl font-semibold tabular-nums">{metrics.activeMatchCount}</p>
-          </div>
-          <div className="rounded-md border border-border bg-card p-4">
-            <span className="text-xs text-muted-foreground">Günlük hacim</span>
-            <p className="text-2xl font-semibold tabular-nums">${metrics.dailyVolumeUsd}</p>
-          </div>
+          <Card>
+            <CardContent>
+              <span className="text-xs text-muted-foreground">Bekleyen çekim talebi</span>
+              <p className="text-2xl font-semibold tabular-nums">{metrics.pendingWithdrawalCount}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent>
+              <span className="text-xs text-muted-foreground">Aktif maç</span>
+              <p className="text-2xl font-semibold tabular-nums">{metrics.activeMatchCount}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent>
+              <span className="text-xs text-muted-foreground">Günlük hacim</span>
+              <p className="text-2xl font-semibold tabular-nums">${metrics.dailyVolumeUsd}</p>
+            </CardContent>
+          </Card>
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>

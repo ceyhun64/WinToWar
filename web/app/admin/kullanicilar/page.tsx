@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { getAdminUser, type AdminUser } from "@/lib/admin/api";
 
 /** docs/07-pages.md `/admin/kullanicilar`: kullanıcı arama, bakiye görüntüleme. */
@@ -30,8 +33,8 @@ export default function AdminKullanicilarPage() {
       <h1 className="text-lg font-semibold">Kullanıcılar</h1>
 
       <div className="flex gap-2">
-        <input
-          className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+        <Input
+          className="flex-1"
           value={playerId}
           onChange={(e) => setPlayerId(e.target.value)}
           placeholder="Oyuncu ID"
@@ -45,22 +48,28 @@ export default function AdminKullanicilarPage() {
 
       {user ? (
         <div className="flex flex-col gap-3">
-          <div className="rounded-md border border-border bg-card p-4">
-            <span className="text-xs text-muted-foreground">Bakiye</span>
-            <p className="text-xl font-semibold tabular-nums">${user.balanceUsd}</p>
-          </div>
+          <Card>
+            <CardContent>
+              <span className="text-xs text-muted-foreground">Bakiye</span>
+              <p className="text-xl font-semibold tabular-nums">${user.balanceUsd}</p>
+            </CardContent>
+          </Card>
           <div>
             <h2 className="text-sm font-semibold">Ödeme Geçmişi</h2>
             {user.invoices.length === 0 ? (
               <p className="mt-1 text-sm text-muted-foreground">Kayıt yok.</p>
             ) : (
-              <ul className="mt-2 flex flex-col gap-1 text-sm">
+              <ul className="mt-2 flex flex-col gap-2 text-sm">
                 {user.invoices.map((i) => (
-                  <li key={i.invoiceId} className="flex justify-between rounded-md border border-border bg-card px-3 py-2">
-                    <span>{i.matchId ? "Maça Giriş" : "Bakiye Yükleme"}</span>
-                    <span className="tabular-nums">
-                      ${i.amountUsd} · {i.status}
-                    </span>
+                  <li key={i.invoiceId}>
+                    <Card size="sm">
+                      <CardContent className="flex justify-between">
+                        <span>{i.matchId ? "Maça Giriş" : "Para Yatırma"}</span>
+                        <span className="flex items-center gap-1.5 tabular-nums">
+                          ${i.amountUsd} <Badge variant="outline">{i.status}</Badge>
+                        </span>
+                      </CardContent>
+                    </Card>
                   </li>
                 ))}
               </ul>

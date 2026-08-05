@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { getWalletBalance } from "@/lib/payments/api";
 import { getStoredDisplayName, isSignedIn } from "@/lib/identity";
 
@@ -33,16 +37,23 @@ export default function ProfilPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-4 py-8">
-      <div className="rounded-md border border-border bg-card p-4">
-        <h1 className="text-sm font-medium text-muted-foreground">Görünen ad</h1>
-        <p className="text-lg font-semibold">{displayName}</p>
-        <p className="mt-2 text-sm text-muted-foreground">Bakiye: ${balanceUsd ?? "—"}</p>
-      </div>
+      <Card>
+        <CardContent>
+          <h1 className="text-sm font-medium text-muted-foreground">Görünen ad</h1>
+          <p className="text-lg font-semibold">{displayName}</p>
+          <p className="mt-2 text-sm text-muted-foreground">Bakiye: ${balanceUsd ?? "—"}</p>
+        </CardContent>
+      </Card>
 
-      <div>
-        <h2 className="text-sm font-semibold">Geçmiş Maçlar</h2>
-        <p className="mt-2 text-sm text-muted-foreground">Henüz tamamlanmış bir maçınız yok.</p>
-      </div>
+      <Empty className="p-6">
+        <EmptyHeader>
+          <EmptyTitle>Geçmiş Maçlar</EmptyTitle>
+          <EmptyDescription>Henüz tamamlanmış bir maçınız yok.</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button render={<Link href="/lobi" />}>Lobiye Git</Button>
+        </EmptyContent>
+      </Empty>
     </div>
   );
 }

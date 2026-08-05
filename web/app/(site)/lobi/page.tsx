@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PayoutAddressPrompt } from "@/components/lobby/PayoutAddressPrompt";
 import {
   joinPracticeRoom,
@@ -174,12 +179,10 @@ export default function LobiPage() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="payoutAddress">
-          LTC ödül adresiniz (Standart/VIP için gerekli)
-        </label>
-        <input
+        <Label htmlFor="payoutAddress">LTC ödül adresiniz (Standart/VIP için gerekli)</Label>
+        <Input
           id="payoutAddress"
-          className="h-9 rounded-md border border-input bg-background px-3 font-mono text-sm"
+          className="font-mono"
           value={payoutAddress}
           onChange={(e) => setPayoutAddress(e.target.value)}
           placeholder="ltc1q... veya L..."
@@ -195,35 +198,24 @@ export default function LobiPage() {
         />
       ) : null}
 
-      <div className="flex gap-2 border-b border-border">
-        <button
-          className={`px-3 py-2 text-sm font-medium ${tab === "Standard" ? "border-b-2 border-foreground text-foreground" : "text-muted-foreground"}`}
-          onClick={() => setTab("Standard")}
-        >
-          Standart
-        </button>
-        <button
-          className={`px-3 py-2 text-sm font-medium ${tab === "Vip" ? "border-b-2 border-foreground text-foreground" : "text-muted-foreground"}`}
-          onClick={() => setTab("Vip")}
-        >
-          VIP
-        </button>
-      </div>
-
-      {tab === "Standard" ? (
-        <div className="flex flex-col gap-3">
+      <Tabs value={tab} onValueChange={(value) => setTab(value as RoomType)}>
+        <TabsList>
+          <TabsTrigger value="Standard">Standart</TabsTrigger>
+          <TabsTrigger value="Vip">VIP</TabsTrigger>
+        </TabsList>
+        <TabsContent value="Standard" className="flex flex-col gap-3 pt-3">
           <p className="text-sm text-muted-foreground">Sabit $1 giriş, 4 oyuncu, gri bölge savunması 1.</p>
           <Button variant="outline" disabled={busy} onClick={handleStandardQuickJoin}>
             Hızlı Katıl
           </Button>
-        </div>
-      ) : (
-        <div className="flex justify-end">
-          <Link href="/lobi/vip-olustur">
+        </TabsContent>
+        <TabsContent value="Vip" className="flex flex-col gap-3 pt-3">
+          <p className="text-sm text-muted-foreground">Giriş ücretini, oyuncu sayısını ve kuralları sen belirlersin.</p>
+          <Link href="/lobi/vip-olustur" className="self-end">
             <Button variant="outline">+ Oda Kur</Button>
           </Link>
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
@@ -234,21 +226,22 @@ export default function LobiPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {rooms.map((room) => (
-            <li
-              key={room.matchId}
-              className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
-            >
-              <div className="text-sm">
-                <span className="font-medium">
-                  {room.playerCount}/{room.maxPlayers} oyuncu
-                </span>
-                <span className="ml-2 text-muted-foreground">
-                  ${room.entryFeeUsd} · gri savunma {room.greyRegionDefenseCount} · {room.fogOfWar ? "Sisli" : "Açık harita"}
-                </span>
-              </div>
-              <Button size="sm" disabled={busy} onClick={() => handleJoinRoom(room.matchId)}>
-                Katıl
-              </Button>
+            <li key={room.matchId}>
+              <Card size="sm" className="flex-row items-center justify-between">
+                <div className="flex items-center gap-2 px-(--card-spacing) text-sm">
+                  <span className="font-medium">{room.roomName}</span>
+                  <span className="text-muted-foreground">
+                    {room.playerCount}/{room.maxPlayers} oyuncu
+                  </span>
+                  <Badge variant="outline">${room.entryFeeUsd}</Badge>
+                  <span className="text-muted-foreground">
+                    gri savunma {room.greyRegionDefenseCount} · {room.fogOfWar ? "Sisli" : "Açık harita"}
+                  </span>
+                </div>
+                <Button size="sm" className="mr-(--card-spacing)" disabled={busy} onClick={() => handleJoinRoom(room.matchId)}>
+                  Katıl
+                </Button>
+              </Card>
             </li>
           ))}
         </ul>

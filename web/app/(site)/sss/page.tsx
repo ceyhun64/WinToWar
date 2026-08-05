@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Sıkça Sorulan Sorular — WinToWar",
@@ -33,12 +35,17 @@ export default function SssPage() {
       <h1 className="text-2xl font-semibold">Sıkça Sorulan Sorular</h1>
       <div className="flex flex-col gap-4">
         {FAQ_ITEMS.map((item) => (
-          <div key={item.question} className="rounded-md border border-border bg-card p-4">
-            <h2 className="text-sm font-semibold">{item.question}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{item.answer}</p>
-          </div>
+          <Card key={item.question}>
+            <CardHeader>
+              <CardTitle>{item.question}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">{item.answer}</CardContent>
+          </Card>
         ))}
       </div>
+      <p className="text-sm text-muted-foreground">
+        Sorunun cevabını bulamadın mı? <Link href="/destek" className="underline">Destek ile iletişime geç</Link>
+      </p>
     </div>
   );
 }

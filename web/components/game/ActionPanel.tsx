@@ -1,5 +1,7 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { GameConfigDto, MapDto, MatchStateDto } from "@/lib/game/types";
 
 interface ActionPanelProps {
@@ -19,10 +21,12 @@ interface ActionPanelProps {
 export function ActionPanel({ map, state, myPlayerId, selectedRegionId, gameConfig }: ActionPanelProps) {
   if (!selectedRegionId) {
     return (
-      <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
-        Bilgi görmek için bir bölge seçin. Asker göndermek için kendi bölgenizi
-        doğrudan komşu bir bölgeye sürükleyip bırakın.
-      </div>
+      <Card>
+        <CardContent className="py-6 text-center text-sm text-muted-foreground">
+          Bilgi görmek için bir bölge seçin. Asker göndermek için kendi bölgenizi
+          doğrudan komşu bir bölgeye sürükleyip bırakın.
+        </CardContent>
+      </Card>
     );
   }
 
@@ -38,13 +42,17 @@ export function ActionPanel({ map, state, myPlayerId, selectedRegionId, gameConf
 
   if (!isMine) {
     return (
-      <div className="flex flex-col gap-2 rounded-md border border-border bg-card px-4 py-4">
-        <h3 className="text-sm font-semibold">{region.name}</h3>
-        <p className="text-sm text-muted-foreground">
-          {regionState.ownerId ? `Sahip: ${ownerName ?? "?"}` : "Sahipsiz bölge"}
-        </p>
-        <p className="text-sm text-muted-foreground">Savunma: {regionState.soldierCount} asker</p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>{region.name}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-1">
+          <p className="text-sm text-muted-foreground">
+            {regionState.ownerId ? `Sahip: ${ownerName ?? "?"}` : "Sahipsiz bölge"}
+          </p>
+          <p className="text-sm text-muted-foreground">Savunma: {regionState.soldierCount} asker</p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -64,23 +72,25 @@ export function ActionPanel({ map, state, myPlayerId, selectedRegionId, gameConf
     .filter((n): n is NonNullable<typeof n> => n !== null);
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-4">
-      <div>
-        <h3 className="text-sm font-semibold">{region.name}</h3>
+    <Card>
+      <CardHeader>
+        <CardTitle>{region.name}</CardTitle>
         <p className="text-sm text-muted-foreground">{regionState.soldierCount} asker</p>
         <p className="text-xs text-muted-foreground">Üretim: 10sn&apos;de {myProduction} asker</p>
-      </div>
+      </CardHeader>
 
-      <div className="flex flex-col gap-2 border-t border-border pt-3">
+      <CardContent className="flex flex-col gap-2 border-t border-border pt-3">
         <span className="text-xs font-medium text-muted-foreground">Komşu Bölgeler</span>
         <ul className="flex flex-col gap-1 text-sm">
           {neighbors.map(({ neighborRegion, neighborState, neighborOwnerName }) => (
             <li key={neighborRegion.id} className="flex items-center justify-between">
               <span>{neighborRegion.name}</span>
-              <span className="text-muted-foreground">
-                {neighborState.ownerId === myPlayerId
-                  ? "Sizin"
-                  : (neighborOwnerName ?? "Sahipsiz")}{" "}
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                {neighborState.ownerId === myPlayerId ? (
+                  <Badge variant="secondary">Sizin</Badge>
+                ) : (
+                  (neighborOwnerName ?? "Sahipsiz")
+                )}{" "}
                 · {neighborState.soldierCount} asker
               </span>
             </li>
@@ -89,7 +99,7 @@ export function ActionPanel({ map, state, myPlayerId, selectedRegionId, gameConf
         <p className="text-xs text-muted-foreground">
           Asker göndermek için bu bölgeyi haritada bir komşusuna sürükleyip bırakın.
         </p>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

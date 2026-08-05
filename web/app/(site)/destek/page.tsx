@@ -1,8 +1,13 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { API_BASE_URL } from "@/lib/game/api";
 
 function DestekForm() {
@@ -42,51 +47,45 @@ function DestekForm() {
 
   if (sent) {
     return (
-      <div className="rounded-md border border-border bg-card p-4 text-sm">
-        Talebiniz alındı. En kısa sürede destek e-postanız üzerinden dönüş yapılacaktır.
-      </div>
+      <Card>
+        <CardContent className="text-sm">
+          Talebiniz alındı. En kısa sürede destek e-postanız üzerinden dönüş yapılacaktır.
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
       {matchId ? (
-        <p className="text-xs text-muted-foreground">Maç referansı: <span className="font-mono">{matchId}</span></p>
+        <p className="text-xs text-muted-foreground">
+          Maç referansı:{" "}
+          <Link href={`/mac/${matchId}`} className="font-mono underline">
+            {matchId}
+          </Link>
+        </p>
       ) : null}
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="subject">
-          Konu
-        </label>
-        <input
-          id="subject"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-        />
+        <Label htmlFor="subject">Konu</Label>
+        <Input id="subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="contactEmail">
-          E-posta
-        </label>
-        <input
+        <Label htmlFor="contactEmail">E-posta</Label>
+        <Input
           id="contactEmail"
           type="email"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={contactEmail}
           onChange={(e) => setContactEmail(e.target.value)}
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="description">
-          Açıklama
-        </label>
-        <textarea
+        <Label htmlFor="description">Açıklama</Label>
+        <Textarea
           id="description"
           rows={5}
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />

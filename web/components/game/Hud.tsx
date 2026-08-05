@@ -1,6 +1,8 @@
 "use client";
 
 import { colorForSlot } from "@/lib/game/colors";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import type { GameConfigDto, MatchStateDto } from "@/lib/game/types";
 
 interface HudProps {
@@ -24,7 +26,7 @@ export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
     gameConfig.baseProductionPerInterval + Math.max(0, myRegions.length - 1) * gameConfig.productionBonusPerRegion;
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-card px-4 py-2">
+    <Card size="sm" className="flex-row items-center justify-between gap-4 px-4">
       <div className="flex items-center gap-4">
         {state.players.map((player) => {
           const regionCount = state.regions.filter((r) => r.ownerId === player.id).length;
@@ -39,10 +41,14 @@ export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
                 <span className="text-sm font-medium">
                   {player.name}
                   {isMe ? " (sen)" : ""}
-                  {player.isEliminated ? " — elendi" : !player.isConnected ? " — bağlı değil" : ""}
                 </span>
                 <span className="text-xs text-muted-foreground">{regionCount} bölge</span>
               </div>
+              {player.isEliminated ? (
+                <Badge variant="destructive">Elendi</Badge>
+              ) : !player.isConnected ? (
+                <Badge variant="outline">Bağlı değil</Badge>
+              ) : null}
             </div>
           );
         })}
@@ -54,6 +60,6 @@ export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
             ? `Üretim: 10sn'de ${myProduction} asker`
             : `${state.lobbyConfirmedCount}/${state.room.maxPlayers} oyuncu`}
       </div>
-    </div>
+    </Card>
   );
 }

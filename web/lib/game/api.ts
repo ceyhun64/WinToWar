@@ -62,6 +62,8 @@ export async function joinRoom(matchId: string, playerName: string, payoutAddres
 
 export interface RoomSummary {
   matchId: string;
+  /** docs/08-page-content.md Bölüm 3.4: kurucunun görünen adından türetilen salt-okunur oda kimliği (ör. "Ali'nin Odası"). */
+  roomName: string;
   playerCount: number;
   maxPlayers: number;
   entryFeeUsd: string;

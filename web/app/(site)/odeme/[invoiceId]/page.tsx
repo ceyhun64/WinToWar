@@ -2,7 +2,10 @@
 
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { getOrCreatePlayerId } from "@/lib/identity";
 import { getPaymentInvoice, simulatePaymentPaid } from "@/lib/payments/api";
 import type { PaymentInvoiceDto } from "@/lib/payments/types";
@@ -140,17 +143,25 @@ export default function OdemePage({ params }: OdemePageProps) {
         <p className="text-sm text-muted-foreground">
           {invoice.amountUsd} USD karşılığı {invoice.amountLtc} LTC gönderin.
         </p>
+        {/* docs/08-page-content.md Bölüm 3.7 Katman 2: ödemenin ne için olduğu + onay sonrası ne olacağı tek cümleyle. */}
+        <p className="mt-1 text-sm text-muted-foreground">
+          {invoice.matchId
+            ? "Bu ödeme maça giriş içindir. Onaylanınca otomatik olarak lobiye eklenirsiniz."
+            : "Bu ödeme bakiye yüklemedir. Onaylanınca bakiyeniz güncellenir."}
+        </p>
       </div>
 
-      <div className="flex flex-col gap-1 rounded-md border border-border bg-card p-3">
-        <span className="text-xs text-muted-foreground">Gönderilecek adres</span>
-        <span className="break-all font-mono text-xs">{invoice.receivingAddress}</span>
-      </div>
-
-      <div className="flex flex-col gap-1 rounded-md border border-border bg-card p-3">
-        <span className="text-xs text-muted-foreground">BIP-21 ödeme URI&apos;si</span>
-        <span className="break-all font-mono text-xs">{invoice.bip21Uri}</span>
-      </div>
+      <Card size="sm">
+        <CardContent className="flex flex-col items-center gap-3">
+          <div className="rounded-2xl bg-white p-3">
+            <QRCodeSVG value={invoice.bip21Uri} size={160} />
+          </div>
+          <div className="flex w-full flex-col gap-1 text-center">
+            <span className="text-xs text-muted-foreground">Gönderilecek adres</span>
+            <span className="break-all font-mono text-xs">{invoice.receivingAddress}</span>
+          </div>
+        </CardContent>
+      </Card>
 
       <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <dt>Kilitlenen kur</dt>
@@ -159,9 +170,9 @@ export default function OdemePage({ params }: OdemePageProps) {
         <dd className="text-right font-mono">{new Date(invoice.expiresAt).toLocaleTimeString("tr-TR")}</dd>
       </dl>
 
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="size-2 rounded-full bg-muted-foreground" />
-        Onay bekleniyor... ({invoice.currentConfirmations}/{invoice.requiredConfirmations} onay)
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>Onay bekleniyor...</span>
+        <Badge variant="outline">{invoice.currentConfirmations}/{invoice.requiredConfirmations} onay</Badge>
       </div>
 
       <Button variant="outline" disabled={simulating} onClick={handleSimulatePaid}>

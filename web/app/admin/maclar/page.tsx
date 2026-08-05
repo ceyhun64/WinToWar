@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { getAdminMatches, type AdminMatchSummary } from "@/lib/admin/api";
 
 /** docs/07-pages.md `/admin/maclar`: aktif/geçmiş maç listesi. */
@@ -22,18 +24,20 @@ export default function AdminMaclarPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {matches.map((m) => (
-            <li key={m.matchId} className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3 text-sm">
-              <div>
-                <p className="font-medium">
-                  {m.roomType} · {m.status}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {m.playerCount}/{m.maxPlayers} oyuncu · ${m.entryFeeUsd}
-                </p>
-              </div>
-              <Link href={`/mac/${m.matchId}`} className="text-sm underline">
-                Detay
-              </Link>
+            <li key={m.matchId}>
+              <Card size="sm" className="flex-row items-center justify-between">
+                <CardContent className="flex-1">
+                  <p className="flex items-center gap-1.5 font-medium">
+                    {m.roomType} <Badge variant="outline">{m.status}</Badge>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {m.playerCount}/{m.maxPlayers} oyuncu · ${m.entryFeeUsd}
+                  </p>
+                </CardContent>
+                <Link href={`/mac/${m.matchId}`} className="pr-(--card-spacing) text-sm underline">
+                  Detay
+                </Link>
+              </Card>
             </li>
           ))}
         </ul>

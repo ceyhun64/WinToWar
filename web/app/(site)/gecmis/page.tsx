@@ -1,10 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getInvoiceHistory } from "@/lib/payments/api";
 import type { PaymentInvoiceDto } from "@/lib/payments/types";
 import { isSignedIn } from "@/lib/identity";
+
+const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  Pending: "outline",
+  Confirmed: "default",
+  Expired: "destructive",
+  Refunded: "secondary",
+  Failed: "destructive",
+};
 
 const STATUS_LABEL: Record<string, string> = {
   Pending: "Bekliyor",
@@ -39,32 +52,42 @@ export default function GecmisPage() {
       {invoices === null ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
       ) : invoices.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Henüz bir işleminiz yok.</p>
+        <Empty className="p-6">
+          <EmptyHeader>
+            <EmptyTitle>Henüz bir işleminiz yok</EmptyTitle>
+            <EmptyDescription>Bir odaya katılın veya bakiyenizi yükleyin.</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button render={<Link href="/lobi" />}>Lobiye Git</Button>
+          </EmptyContent>
+        </Empty>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="py-2 font-medium">Tarih</th>
-                <th className="py-2 font-medium">Tür</th>
-                <th className="py-2 text-right font-medium">Tutar (USD)</th>
-                <th className="py-2 text-right font-medium">Durum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((invoice) => (
-                <tr key={invoice.invoiceId} className="border-b border-border">
-                  <td className="py-2 text-xs text-muted-foreground">
-                    {new Date(invoice.createdAt).toLocaleDateString("tr-TR")}
-                  </td>
-                  <td className="py-2">{invoice.matchId ? "Maça Giriş" : "Bakiye Yükleme"}</td>
-                  <td className="py-2 text-right tabular-nums">${invoice.amountUsd}</td>
-                  <td className="py-2 text-right">{STATUS_LABEL[invoice.status] ?? invoice.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tarih</TableHead>
+              <TableHead>Tür</TableHead>
+              <TableHead className="text-right">Tutar (USD)</TableHead>
+              <TableHead className="text-right">Durum</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {invoices.map((invoice) => (
+              <TableRow key={invoice.invoiceId}>
+                <TableCell className="text-xs text-muted-foreground">
+                  {new Date(invoice.createdAt).toLocaleDateString("tr-TR")}
+                </TableCell>
+                <TableCell>{invoice.matchId ? "Maça Giriş" : "Para Yatırma"}</TableCell>
+                <TableCell className="text-right tabular-nums">${invoice.amountUsd}</TableCell>
+                <TableCell className="text-right">
+                  <Badge variant={STATUS_VARIANT[invoice.status] ?? "outline"}>
+                    {STATUS_LABEL[invoice.status] ?? invoice.status}
+                  </Badge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
     </div>
   );

@@ -3,10 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PayoutAddressPrompt } from "@/components/lobby/PayoutAddressPrompt";
 import { createVipRoom, getGameConfig, joinRoom, type JoinRoomResult } from "@/lib/game/api";
 import type { GameConfigDto } from "@/lib/game/types";
 import { getStoredDisplayName, getStoredPayoutAddress, isSignedIn, setStoredPayoutAddress } from "@/lib/identity";
+import { getWalletBalance } from "@/lib/payments/api";
 
 function storeSession(matchId: string, playerId: string, playerName: string) {
   window.localStorage.setItem(`wintowar:match:${matchId}:playerId`, playerId);
@@ -31,6 +35,7 @@ export default function VipOlusturPage() {
   const [entryFeeUsd, setEntryFeeUsd] = useState(1);
   const [password, setPassword] = useState("");
   const [payoutAddress, setPayoutAddress] = useState("");
+  const [balanceUsd, setBalanceUsd] = useState<string | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +55,9 @@ export default function VipOlusturPage() {
         setGreyRegionDefenseCount(dto.greyRegionDefenseMin);
       })
       .catch((err) => setError(String(err)));
+    getWalletBalance()
+      .then((dto) => setBalanceUsd(dto.balanceUsd))
+      .catch(() => setBalanceUsd(null));
   }, [router]);
 
   function handleResult(result: JoinRoomResult) {
@@ -153,80 +161,107 @@ export default function VipOlusturPage() {
     );
   }
 
+  // docs/08-page-content.md Bölüm 3.5: canlı havuz önizlemesi — rakamlar
+  // yeniden tanımlanmaz, yalnızca docs/05-payment.md formülünün (Havuz =
+  // Giriş Ücreti × Oyuncu Sayısı, Kazanç = Havuz × (1 − CommissionRate))
+  // canlı hesaplanmış hâlidir.
+  const commissionRate = Number(config.commissionRate);
+  const pool = entryFeeUsd * maxPlayers;
+  const commission = pool * commissionRate;
+  const winnerAmount = pool - commission;
+  const balance = balanceUsd !== null ? Number(balanceUsd) : null;
+  const shortfall = balance !== null ? Math.max(0, entryFeeUsd - balance) : null;
+
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 px-4 py-6">
       <h1 className="text-lg font-semibold">VIP Oda Kur</h1>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="maxPlayers">
+        <Label htmlFor="maxPlayers">
           Oyuncu sayısı ({config.vipRoomMinPlayers}-{config.vipRoomMaxPlayers})
-        </label>
-        <input
+        </Label>
+        <Input
           id="maxPlayers"
           type="number"
           min={config.vipRoomMinPlayers}
           max={config.vipRoomMaxPlayers}
           value={maxPlayers}
           onChange={(e) => setMaxPlayers(Number(e.target.value))}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="greyDefense">
+        <Label htmlFor="greyDefense">
           Gri bölge savunması ({config.greyRegionDefenseMin}-{config.greyRegionDefenseMax})
-        </label>
-        <input
+        </Label>
+        <Input
           id="greyDefense"
           type="number"
           min={config.greyRegionDefenseMin}
           max={config.greyRegionDefenseMax}
           value={greyRegionDefenseCount}
           onChange={(e) => setGreyRegionDefenseCount(Number(e.target.value))}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
+        <p className="text-xs text-muted-foreground">Yüksek değer = daha zor fetih.</p>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="entryFee">
-          Giriş ücreti (USD)
-        </label>
-        <input
+        <Label htmlFor="entryFee">Giriş ücreti (USD)</Label>
+        <Input
           id="entryFee"
           type="number"
           min={0}
           step={0.01}
           value={entryFeeUsd}
           onChange={(e) => setEntryFeeUsd(Number(e.target.value))}
-          className="h-9 rounded-md border border-input bg-background px-3 text-right text-sm"
+          className="text-right"
         />
+        {shortfall !== null ? (
+          <p className="text-xs text-muted-foreground">
+            {shortfall > 0
+              ? `Bakiyeniz $${balance!.toFixed(2)} — $${shortfall.toFixed(2)} eksik, ödeme ekranına yönlendirileceksiniz.`
+              : `Bakiyenizden $${entryFeeUsd.toFixed(2)} düşülecek (bakiye: $${balance!.toFixed(2)}).`}
+          </p>
+        ) : null}
       </div>
 
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={fogOfWar} onChange={(e) => setFogOfWar(e.target.checked)} />
+      <div className="flex flex-col gap-1 rounded-2xl border border-border bg-muted/40 p-3 text-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Toplam Havuz</span>
+          <span className="font-medium tabular-nums">${pool.toFixed(2)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Komisyon (%{(commissionRate * 100).toFixed(0)})</span>
+          <span className="font-medium tabular-nums">${commission.toFixed(2)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Kazanana Düşen</span>
+          <span className="font-semibold tabular-nums">${winnerAmount.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <Label className="font-normal">
+        <Checkbox checked={fogOfWar} onCheckedChange={(checked) => setFogOfWar(checked)} />
         Fog of War (sisli harita)
-      </label>
+      </Label>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="password">
+        <Label htmlFor="password">
           Parola (opsiyonel — girilirse oda şifreli olur, herkese açık listede görünmez)
-        </label>
-        <input
+        </Label>
+        <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="payoutAddress">
-          LTC ödül adresiniz
-        </label>
-        <input
+        <Label htmlFor="payoutAddress">LTC ödül adresiniz</Label>
+        <Input
           id="payoutAddress"
-          className="h-9 rounded-md border border-input bg-background px-3 font-mono text-sm"
+          className="font-mono"
           value={payoutAddress}
           onChange={(e) => setPayoutAddress(e.target.value)}
           placeholder="ltc1q... veya L..."

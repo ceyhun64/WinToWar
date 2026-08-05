@@ -163,6 +163,25 @@ public class WalletService
     }
 
     /// <summary>
+    /// docs/08-page-content.md Bölüm 3.9 "Bekleyen Transferler" kartı: oyuncunun
+    /// henüz sonuçlanmamış çekim talepleri. 🛠️ Metnin literal ifadesi "henüz
+    /// Completed olmayan" der, ama kart adı ve gerekçesi ("param nerede"
+    /// belirsizliği) yalnızca devam eden (Pending/Approved/Sent) talepleri
+    /// kastediyor — Rejected/Failed zaten sonuçlanmış, artık "bekleyen" değil.
+    /// </summary>
+    public async Task<List<WithdrawalRequestDto>> ListForPlayerAsync(string playerId, CancellationToken cancellationToken)
+    {
+        var pending = await _db.WithdrawalRequests.AsNoTracking()
+            .Where(w => w.PlayerId == playerId && (
+                w.Status == WithdrawalRequestStatus.Pending ||
+                w.Status == WithdrawalRequestStatus.Approved ||
+                w.Status == WithdrawalRequestStatus.Sent))
+            .ToListAsync(cancellationToken);
+
+        return pending.OrderByDescending(w => w.CreatedAt).Select(ToDto).ToList();
+    }
+
+    /// <summary>
     /// docs/07-pages.md `/admin/odemeler` manuel onay. Bölüm 1.9'daki state machine'in
     /// (Pending→Approved→Sent→Completed / Rejected/Failed) dört ara/terminal durumu da
     /// bu tek çağrı içinde sırayla geçilir — Payout/Refund'daki gibi ayrı bir retry+

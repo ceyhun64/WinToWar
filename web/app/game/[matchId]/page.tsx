@@ -6,6 +6,7 @@ import { ActionPanel } from "@/components/game/ActionPanel";
 import { GameMap } from "@/components/game/GameMap";
 import { Hud } from "@/components/game/Hud";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { getGameConfig, getMap } from "@/lib/game/api";
 import { useGameStore } from "@/lib/game/store";
 import type { GameConfigDto, MapDto } from "@/lib/game/types";
@@ -82,45 +83,64 @@ export default function GamePage({ params }: GamePageProps) {
       <Hud state={state} myPlayerId={playerId} gameConfig={gameConfig} />
 
       {state.status === "Lobby" || state.status === "Countdown" ? (
-        <div className="flex flex-col items-center gap-3 rounded-md border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
-          <p>
-            {state.status === "Countdown" && state.countdownRemainingSeconds !== null
-              ? `Lobi doldu, maç ${state.countdownRemainingSeconds}sn içinde başlıyor.`
-              : `Diğer oyuncular bekleniyor (${state.lobbyConfirmedCount}/${state.room.maxPlayers}).`}
-          </p>
-          <p>
-            Maç kodu: <span className="font-mono font-medium">{matchId}</span>
-          </p>
-          {store.lobbyTimeoutReached ? (
-            <p className="text-xs text-muted-foreground">
-              Eşleşme süresi doldu — beklemeye devam edebilir ya da ayrılıp ödemenizi iade alabilirsiniz.
+        <Card>
+          <CardContent className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
+            {state.status === "Countdown" && state.countdownRemainingSeconds !== null ? (
+              <p>{`Lobi doldu, maç ${state.countdownRemainingSeconds}sn içinde başlıyor.`}</p>
+            ) : (
+              <>
+                {/* docs/08-page-content.md Bölüm 1.4/3.4: "Ali / Mehmet · 3/4" gibi somut,
+                    dolan/boş slotları isimle gösteren bir liste — jenerik bir sayaç yerine. */}
+                <p className="text-foreground">
+                  {Array.from({ length: state.room.maxPlayers }, (_, slot) => {
+                    const occupant = state.players.find((p) => p.slot === slot);
+                    return occupant ? occupant.name : "Bekleniyor…";
+                  }).join(" · ")}
+                </p>
+                <p>{`${state.lobbyConfirmedCount}/${state.room.maxPlayers} oyuncu`}</p>
+                {state.room.maxPlayers - state.lobbyConfirmedCount === 1 ? (
+                  <p className="font-medium text-foreground">Son oyuncu bekleniyor</p>
+                ) : null}
+              </>
+            )}
+            <p>
+              Maç kodu: <span className="font-mono font-medium">{matchId}</span>
             </p>
-          ) : null}
-          {state.status === "Lobby" ? (
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => store.leaveLobby()}>
-                {store.lobbyTimeoutReached ? "İptal Et / Bakiyeyi İade Et" : "Lobiden Ayrıl"}
-              </Button>
-              {state.room.type === "Vip" && state.room.creatorPlayerId === playerId ? (
-                <Button size="sm" onClick={() => store.startVipMatchNow()}>
-                  Şimdi Başlat
+            {store.lobbyTimeoutReached ? (
+              <p className="text-xs text-muted-foreground">
+                Eşleşme süresi doldu — beklemeye devam edebilir ya da ayrılıp ödemenizi iade alabilirsiniz.
+              </p>
+            ) : null}
+            {state.status === "Lobby" ? (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => store.leaveLobby()}>
+                  {store.lobbyTimeoutReached ? "İptal Et / Bakiyeyi İade Et" : "Lobiden Ayrıl"}
                 </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+                {state.room.type === "Vip" && state.room.creatorPlayerId === playerId ? (
+                  <Button size="sm" onClick={() => store.startVipMatchNow()}>
+                    Şimdi Başlat
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
       ) : null}
 
       {state.status === "Cancelled" ? (
-        <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm font-medium">
-          Lobi zaman aşımına uğradı, ödemeniz iade edildi.
-        </div>
+        <Card>
+          <CardContent className="text-center text-sm font-medium">
+            Lobi zaman aşımına uğradı, ödemeniz iade edildi.
+          </CardContent>
+        </Card>
       ) : null}
 
       {state.status === "Completed" ? (
-        <div className="rounded-md border border-border bg-card px-4 py-6 text-center text-sm font-medium">
-          {isWinner ? "Kazandınız!" : `Kazanan${state.winners.length > 1 ? "lar" : ""}: ${winnerNames}`}
-        </div>
+        <Card>
+          <CardContent className="text-center text-sm font-medium">
+            {isWinner ? "Kazandınız!" : `Kazanan${state.winners.length > 1 ? "lar" : ""}: ${winnerNames}`}
+          </CardContent>
+        </Card>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_320px]">

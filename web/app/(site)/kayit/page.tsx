@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getOrCreatePlayerId, isSignedIn, setStoredDisplayName } from "@/lib/identity";
 
 /**
@@ -47,12 +50,9 @@ export default function KayitPage() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="displayName">
-          Görünen ad
-        </label>
-        <input
+        <Label htmlFor="displayName">Görünen ad</Label>
+        <Input
           id="displayName"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="Adınız"
@@ -60,21 +60,19 @@ export default function KayitPage() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="flex items-start gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
+        <Label className="items-start gap-2 font-normal text-muted-foreground">
+          <Checkbox
             className="mt-0.5"
             checked={ageConfirmed}
-            onChange={(e) => setAgeConfirmed(e.target.checked)}
+            onCheckedChange={(checked) => setAgeConfirmed(checked)}
           />
           18 yaşından büyüğüm.
-        </label>
-        <label className="flex items-start gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
+        </Label>
+        <Label className="items-start gap-2 font-normal text-muted-foreground">
+          <Checkbox
             className="mt-0.5"
             checked={termsAccepted}
-            onChange={(e) => setTermsAccepted(e.target.checked)}
+            onCheckedChange={(checked) => setTermsAccepted(checked)}
           />
           <span>
             <Link href="/kosullar" className="underline">
@@ -86,7 +84,7 @@ export default function KayitPage() {
             </Link>
             &apos;nı kabul ediyorum.
           </span>
-        </label>
+        </Label>
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

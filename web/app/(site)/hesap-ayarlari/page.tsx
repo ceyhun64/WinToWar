@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getStoredDisplayName, isSignedIn, setStoredDisplayName, signOut } from "@/lib/identity";
 import { getWalletBalance } from "@/lib/payments/api";
 
@@ -68,45 +71,46 @@ export default function HesapAyarlariPage() {
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-4 py-8">
       <h1 className="text-lg font-semibold">Hesap Ayarları</h1>
 
-      <div className="flex flex-col gap-3 rounded-md border border-border bg-card p-4">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor="displayName">
-            Görünen ad
-          </label>
-          <input
-            id="displayName"
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-        </div>
-        <Button onClick={handleSave}>{saved ? "Kaydedildi" : "Kaydet"}</Button>
-      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="displayName">Görünen ad</Label>
+            <Input
+              id="displayName"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+          </div>
+          <Button onClick={handleSave}>{saved ? "Kaydedildi" : "Kaydet"}</Button>
+        </CardContent>
+      </Card>
 
-      <div className="flex flex-col gap-3 rounded-md border border-destructive/40 bg-card p-4">
-        <div>
-          <h2 className="text-sm font-semibold">Hesabımı Sil</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle>Hesabımı Sil</CardTitle>
+          <p className="text-sm text-muted-foreground">
             Bu işlem geri alınamaz. Devam etmeden önce bakiyenizi çektiğinizden emin olun (bkz.
             /cuzdan).
           </p>
-        </div>
-        {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
-        {confirmingDelete ? (
-          <div className="flex gap-2">
-            <Button variant="destructive" disabled={deleting} onClick={handleDeleteAccount}>
-              {deleting ? "Kontrol ediliyor..." : "Evet, hesabımı sil"}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+          {confirmingDelete ? (
+            <div className="flex gap-2">
+              <Button variant="destructive" disabled={deleting} onClick={handleDeleteAccount}>
+                {deleting ? "Kontrol ediliyor..." : "Evet, hesabımı sil"}
+              </Button>
+              <Button variant="outline" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
+                Vazgeç
+              </Button>
+            </div>
+          ) : (
+            <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+              Hesabımı Sil
             </Button>
-            <Button variant="outline" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
-              Vazgeç
-            </Button>
-          </div>
-        ) : (
-          <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
-            Hesabımı Sil
-          </Button>
-        )}
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -36,6 +36,13 @@ public class WalletController : ControllerBase
         return Ok(await _paymentService.GetInvoiceHistoryAsync(playerId, cancellationToken));
     }
 
+    /// <summary>docs/08-page-content.md Bölüm 3.9: `/cuzdan`'daki "Bekleyen Transferler" kartı.</summary>
+    [HttpGet("{playerId}/withdrawals")]
+    public async Task<ActionResult<List<WithdrawalRequestDto>>> GetPendingWithdrawalsForPlayer(string playerId, CancellationToken cancellationToken)
+    {
+        return Ok(await _walletService.ListForPlayerAsync(playerId, cancellationToken));
+    }
+
     [HttpPost("topup")]
     public async Task<ActionResult<PaymentInvoiceDto>> TopUp([FromBody] CreateTopUpInvoiceRequest request, CancellationToken cancellationToken)
     {

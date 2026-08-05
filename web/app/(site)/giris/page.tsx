@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getOrCreatePlayerId, getStoredDisplayName, isSignedIn, setStoredDisplayName } from "@/lib/identity";
 
 /**
@@ -44,12 +46,9 @@ export default function GirisPage() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="displayName">
-          Görünen ad
-        </label>
-        <input
+        <Label htmlFor="displayName">Görünen ad</Label>
+        <Input
           id="displayName"
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="Adınız"
@@ -59,9 +58,14 @@ export default function GirisPage() {
 
       <Button onClick={handleSubmit}>Giriş Yap</Button>
 
-      <p className="text-center text-xs text-muted-foreground">
-        Hesabınız yok mu? <Link href="/kayit" className="underline">Kayıt olun</Link>
-      </p>
+      <div className="flex flex-col items-center gap-1 text-center text-xs text-muted-foreground">
+        <p>
+          Hesabınız yok mu? <Link href="/kayit" className="underline">Kayıt olun</Link>
+        </p>
+        <Link href="/sifremi-unuttum" className="underline">
+          Şifremi unuttum
+        </Link>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
   getSupportTickets,
   updateSupportTicketStatus,
@@ -41,28 +44,32 @@ export default function AdminDestekPage() {
       {sorted.length === 0 ? (
         <p className="text-sm text-muted-foreground">Talep yok.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2 text-sm">
           {sorted.map((t) => (
-            <li key={t.id} className="rounded-md border border-border bg-card p-4 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">
-                  {t.subject}
-                  {t.matchId ? <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs">Maç itirazı</span> : null}
-                </span>
-                <select
-                  className="h-7 rounded-md border border-input bg-background px-2 text-xs"
-                  value={t.status}
-                  onChange={(e) => handleStatusChange(t.id, e.target.value as SupportTicketStatus)}
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="mt-1 text-muted-foreground">{t.description}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t.contactEmail}</p>
+            <li key={t.id}>
+              <Card>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 font-medium">
+                      {t.subject}
+                      {t.matchId ? <Badge variant="secondary">Maç itirazı</Badge> : null}
+                    </span>
+                    <NativeSelect
+                      size="sm"
+                      value={t.status}
+                      onChange={(e) => handleStatusChange(t.id, e.target.value as SupportTicketStatus)}
+                    >
+                      {STATUSES.map((s) => (
+                        <NativeSelectOption key={s} value={s}>
+                          {s}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  <p className="mt-1 text-muted-foreground">{t.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t.contactEmail}</p>
+                </CardContent>
+              </Card>
             </li>
           ))}
         </ul>

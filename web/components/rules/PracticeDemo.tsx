@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 interface DemoRegion {
   id: string;
@@ -76,39 +80,40 @@ export function PracticeDemo() {
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-md border border-border bg-card p-4">
+    <Card>
+      <CardContent className="flex flex-col gap-4">
       <div className="grid grid-cols-3 gap-3 text-center text-sm">
         {regions.map((region) => (
           <div
             key={region.id}
-            className="flex flex-col gap-1 rounded-md border border-border p-3"
+            className="flex flex-col items-center gap-1 rounded-md border border-border p-3"
             style={{ backgroundColor: region.owner === "player" ? "#7C93B322" : "#D8D2C4" }}
           >
             <span className="font-medium">{region.name}</span>
-            <span className="text-xs text-muted-foreground">
-              {region.owner === "player" ? "Sizin" : "Nötr"} · {region.soldierCount} asker
-            </span>
+            <Badge variant={region.owner === "player" ? "default" : "outline"}>
+              {region.owner === "player" ? "Sizin" : "Nötr"}
+            </Badge>
+            <span className="text-xs text-muted-foreground">{region.soldierCount} asker</span>
           </div>
         ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+        <NativeSelect
           value={target}
           onChange={(e) => setTarget(e.target.value as "b" | "c")}
           disabled={moving}
         >
-          <option value="b">Bölge B&apos;ye saldır</option>
-          <option value="c">Bölge C&apos;ye saldır</option>
-        </select>
-        <input
+          <NativeSelectOption value="b">Bölge B&apos;ye saldır</NativeSelectOption>
+          <NativeSelectOption value="c">Bölge C&apos;ye saldır</NativeSelectOption>
+        </NativeSelect>
+        <Input
           type="number"
           min={1}
           max={home.soldierCount}
           value={soldierCount}
           onChange={(e) => setSoldierCount(Number(e.target.value))}
-          className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
+          className="w-20"
           disabled={moving}
         />
         <Button size="sm" disabled={moving || home.soldierCount === 0} onClick={sendAttack}>
@@ -131,6 +136,7 @@ export function PracticeDemo() {
           kırar, 1&apos;i garnizon kalır).
         </p>
       )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -68,6 +68,12 @@ export async function getWalletBalance(): Promise<WalletDto> {
   return parsePaymentResponse<WalletDto>(res);
 }
 
+/** docs/08-page-content.md Bölüm 3.9: "Bekleyen Transferler" kartı — henüz sonuçlanmamış çekim talepleri. */
+export async function getPendingWithdrawals(): Promise<WithdrawalRequestDto[]> {
+  const res = await fetch(`${API_BASE_URL}/api/wallet/${getOrCreatePlayerId()}/withdrawals`);
+  return parsePaymentResponse<WithdrawalRequestDto[]>(res);
+}
+
 export async function createTopUpInvoice(amountUsd: number, payoutAddress: string): Promise<PaymentInvoiceDto> {
   const res = await fetch(`${API_BASE_URL}/api/wallet/topup`, {
     method: "POST",

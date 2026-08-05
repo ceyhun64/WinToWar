@@ -36,7 +36,7 @@ public record JoinRoomResult(
     string? ShortfallUsd,
     api.Models.Payments.Dtos.PaymentInvoiceDto? Invoice);
 
-public record RoomSummaryResponse(string MatchId, int PlayerCount, int MaxPlayers, string EntryFeeUsd, bool FogOfWar, int GreyRegionDefenseCount, bool IsPasswordProtected);
+public record RoomSummaryResponse(string MatchId, string RoomName, int PlayerCount, int MaxPlayers, string EntryFeeUsd, bool FogOfWar, int GreyRegionDefenseCount, bool IsPasswordProtected);
 
 public record VerifyRoomPasswordRequest(string Password);
 
@@ -68,16 +68,7 @@ public class RoomsController : ControllerBase
     [HttpGet]
     public ActionResult<List<RoomSummaryResponse>> ListOpenRooms([FromQuery] RoomType type)
     {
-        var rooms = _roomService.ListOpenRooms(type)
-            .Select(m => new RoomSummaryResponse(
-                m.Id,
-                m.Players.Count,
-                m.Room.MaxPlayers,
-                m.Room.EntryFeeUsd.ToString(CultureInfo.InvariantCulture),
-                m.Room.FogOfWar,
-                m.Room.GreyRegionDefenseCount,
-                m.Room.IsPasswordProtected))
-            .ToList();
+        var rooms = _roomService.ListOpenRooms(type).Select(ToRoomSummaryResponse).ToList();
         return Ok(rooms);
     }
 
@@ -150,14 +141,26 @@ public class RoomsController : ControllerBase
             return NotFound();
         }
 
-        return Ok(new RoomSummaryResponse(
+        return Ok(ToRoomSummaryResponse(match));
+    }
+
+    /// <summary>
+    /// docs/08-page-content.md Bölüm 3.4: liste ve davet-token uçlarının ikisi de
+    /// aynı oda kimliği türetme mantığını (RoomDisplayNameFormatter) kullanır —
+    /// bkz. `06-coding-standards.md` "Kod Tekrarını Önleme".
+    /// </summary>
+    private static RoomSummaryResponse ToRoomSummaryResponse(Models.Match match)
+    {
+        var creatorName = match.Players.FirstOrDefault(p => p.Id == match.Room.CreatorPlayerId)?.Name;
+        return new RoomSummaryResponse(
             match.Id,
+            RoomDisplayNameFormatter.Format(match.Room.Type, creatorName),
             match.Players.Count,
             match.Room.MaxPlayers,
             match.Room.EntryFeeUsd.ToString(CultureInfo.InvariantCulture),
             match.Room.FogOfWar,
             match.Room.GreyRegionDefenseCount,
-            match.Room.IsPasswordProtected));
+            match.Room.IsPasswordProtected);
     }
 
     [HttpPost("{matchId}/verify-password")]

@@ -2,7 +2,10 @@
 
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PayoutAddressPrompt } from "@/components/lobby/PayoutAddressPrompt";
 import {
   getRoomByInviteToken,
@@ -172,20 +175,22 @@ export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 px-4 py-16">
       <div>
         <h1 className="text-lg font-semibold">Özel Davet</h1>
-        <p className="text-sm text-muted-foreground">
-          {room.playerCount}/{room.maxPlayers} oyuncu · ${room.entryFeeUsd} giriş ücreti
-        </p>
+        {/* docs/08-page-content.md Bölüm 3.6: parola girilmeden oda detayları (oyuncu sayısı, giriş ücreti) gösterilmez. */}
+        {passwordOk ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            {room.playerCount}/{room.maxPlayers} oyuncu · <Badge variant="outline">${room.entryFeeUsd} giriş ücreti</Badge>
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Devam etmek için oda parolasını girin.</p>
+        )}
       </div>
 
       {!passwordOk ? (
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium" htmlFor="roomPassword">
-            Oda parolası
-          </label>
-          <input
+          <Label htmlFor="roomPassword">Oda parolası</Label>
+          <Input
             id="roomPassword"
             type="password"
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -196,12 +201,10 @@ export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
       ) : (
         <>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium" htmlFor="payoutAddress">
-              LTC ödül adresiniz
-            </label>
-            <input
+            <Label htmlFor="payoutAddress">LTC ödül adresiniz</Label>
+            <Input
               id="payoutAddress"
-              className="h-9 rounded-md border border-input bg-background px-3 font-mono text-sm"
+              className="font-mono"
               value={payoutAddress}
               onChange={(e) => setPayoutAddress(e.target.value)}
               placeholder="ltc1q... veya L..."

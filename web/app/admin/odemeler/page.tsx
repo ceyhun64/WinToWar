@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   approveWithdrawal,
   getFailedInvoices,
@@ -62,21 +64,23 @@ export default function AdminOdemelerPage() {
         ) : (
           <ul className="flex flex-col gap-2">
             {withdrawals.map((w) => (
-              <li key={w.id} className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{w.playerId}</p>
-                  <p className="text-xs text-muted-foreground">
-                    ${w.amountUsd} · {w.amountLtc} LTC → {w.destinationLtcAddress}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" disabled={busyId === w.id} onClick={() => handleApprove(w.id)}>
-                    Onayla
-                  </Button>
-                  <Button size="sm" variant="destructive" disabled={busyId === w.id} onClick={() => handleReject(w.id)}>
-                    Reddet
-                  </Button>
-                </div>
+              <li key={w.id}>
+                <Card size="sm" className="flex-row items-center justify-between">
+                  <CardContent className="flex-1">
+                    <p className="font-medium">{w.playerId}</p>
+                    <p className="text-xs text-muted-foreground">
+                      ${w.amountUsd} · {w.amountLtc} LTC → {w.destinationLtcAddress}
+                    </p>
+                  </CardContent>
+                  <div className="flex gap-2 pr-(--card-spacing)">
+                    <Button size="sm" disabled={busyId === w.id} onClick={() => handleApprove(w.id)}>
+                      Onayla
+                    </Button>
+                    <Button size="sm" variant="destructive" disabled={busyId === w.id} onClick={() => handleReject(w.id)}>
+                      Reddet
+                    </Button>
+                  </div>
+                </Card>
               </li>
             ))}
           </ul>
@@ -90,11 +94,15 @@ export default function AdminOdemelerPage() {
         ) : (
           <ul className="flex flex-col gap-2">
             {failedInvoices.map((i) => (
-              <li key={i.invoiceId} className="rounded-md border border-border bg-card px-4 py-3 text-sm">
-                <p className="font-medium">{i.playerId}</p>
-                <p className="text-xs text-muted-foreground">
-                  ${i.amountUsd} · {i.status} · {i.matchId ?? "Bakiye Yükleme"}
-                </p>
+              <li key={i.invoiceId}>
+                <Card size="sm">
+                  <CardContent>
+                    <p className="font-medium">{i.playerId}</p>
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      ${i.amountUsd} · <Badge variant="destructive">{i.status}</Badge> · {i.matchId ?? "Para Yatırma"}
+                    </p>
+                  </CardContent>
+                </Card>
               </li>
             ))}
           </ul>

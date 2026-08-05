@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getAdminKey, getAdminMetrics, setAdminKey } from "@/lib/admin/api";
 
 /**
@@ -55,20 +58,25 @@ export function AdminGate({ children }: { children: React.ReactNode }) {
   if (!authorized) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-16">
-        <div className="flex w-full max-w-sm flex-col gap-3">
-          <h1 className="text-lg font-semibold">Admin Girişi</h1>
-          <input
-            type="password"
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-            placeholder="Admin anahtarı"
-          />
-          <Button disabled={busy || !keyInput.trim()} onClick={handleSubmit}>
-            Giriş Yap
-          </Button>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        </div>
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Admin Girişi</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Label htmlFor="adminKey">Admin anahtarı</Label>
+            <Input
+              id="adminKey"
+              type="password"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="Admin anahtarı"
+            />
+            <Button disabled={busy || !keyInput.trim()} onClick={handleSubmit}>
+              Giriş Yap
+            </Button>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          </CardContent>
+        </Card>
       </div>
     );
   }

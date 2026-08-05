@@ -3,6 +3,8 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { GameMap } from "@/components/game/GameMap";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getMap, getMatchSnapshot } from "@/lib/game/api";
 import type { MapDto, MatchStateDto } from "@/lib/game/types";
 import { getPayoutSummary } from "@/lib/payments/api";
@@ -25,6 +27,13 @@ const PAYOUT_STATUS_LABEL: Record<string, string> = {
   PayoutSent: "Gönderildi",
   Completed: "Tamamlandı",
   Failed: "Başarısız",
+};
+
+const PAYOUT_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  PayoutPending: "outline",
+  PayoutSent: "secondary",
+  Completed: "default",
+  Failed: "destructive",
 };
 
 function formatDuration(startedAtUtc: string | null, completedAtUtc: string | null): string {
@@ -75,18 +84,24 @@ export default function MacPage({ params }: MacPageProps) {
       <h1 className="text-lg font-semibold">Maç Özeti</h1>
 
       <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-        <div className="rounded-md border border-border bg-card p-3">
-          <span className="text-xs text-muted-foreground">Durum</span>
-          <p className="font-medium">{MATCH_STATUS_LABEL[match.status] ?? match.status}</p>
-        </div>
-        <div className="rounded-md border border-border bg-card p-3">
-          <span className="text-xs text-muted-foreground">Süre</span>
-          <p className="font-medium tabular-nums">{formatDuration(match.startedAtUtc, match.completedAtUtc)}</p>
-        </div>
-        <div className="rounded-md border border-border bg-card p-3 sm:col-span-2">
-          <span className="text-xs text-muted-foreground">Kazanan</span>
-          <p className="font-medium">{winnerNames || "—"}</p>
-        </div>
+        <Card size="sm">
+          <CardContent>
+            <span className="text-xs text-muted-foreground">Durum</span>
+            <p className="font-medium">{MATCH_STATUS_LABEL[match.status] ?? match.status}</p>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent>
+            <span className="text-xs text-muted-foreground">Süre</span>
+            <p className="font-medium tabular-nums">{formatDuration(match.startedAtUtc, match.completedAtUtc)}</p>
+          </CardContent>
+        </Card>
+        <Card size="sm" className="sm:col-span-2">
+          <CardContent>
+            <span className="text-xs text-muted-foreground">Kazanan</span>
+            <p className="font-medium">{winnerNames || "—"}</p>
+          </CardContent>
+        </Card>
       </div>
 
       <GameMap
@@ -99,21 +114,28 @@ export default function MacPage({ params }: MacPageProps) {
       />
 
       {payout ? (
-        <div className="rounded-md border border-border bg-card p-4">
-          <h2 className="text-sm font-semibold">Ödül Dağıtımı</h2>
-          <ul className="mt-2 flex flex-col gap-1 text-sm">
-            {payout.recipients.map((r) => (
-              <li key={r.winnerPlayerId} className="flex items-center justify-between">
-                <span className="text-muted-foreground">
-                  {match.players.find((p) => p.id === r.winnerPlayerId)?.name ?? r.winnerPlayerId}
-                </span>
-                <span className="tabular-nums">
-                  {r.amountLtc} LTC · {PAYOUT_STATUS_LABEL[r.status] ?? r.status}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Ödül Dağıtımı</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-2 text-sm">
+              {payout.recipients.map((r) => (
+                <li key={r.winnerPlayerId} className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    {match.players.find((p) => p.id === r.winnerPlayerId)?.name ?? r.winnerPlayerId}
+                  </span>
+                  <span className="flex items-center gap-1.5 tabular-nums">
+                    {r.amountLtc} LTC
+                    <Badge variant={PAYOUT_STATUS_VARIANT[r.status] ?? "outline"}>
+                      {PAYOUT_STATUS_LABEL[r.status] ?? r.status}
+                    </Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       ) : null}
 
       <Link href={`/destek?matchId=${matchId}`} className="text-sm text-muted-foreground underline">

@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { getAdminLogs, type AdminLogEntry } from "@/lib/admin/api";
 
 /** docs/07-pages.md `/admin/loglar`: mevcut log altyapısının filtrelenebilir okuma ekranı — yeni bir loglama sistemi kurulmaz (YAGNI). */
@@ -27,19 +30,15 @@ export default function AdminLoglarPage() {
       <h1 className="text-lg font-semibold">Loglar</h1>
 
       <div className="flex flex-wrap gap-2">
-        <select
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-          value={level}
-          onChange={(e) => setLevel(e.target.value)}
-        >
-          <option value="">Tüm seviyeler</option>
-          <option value="Information">Bilgi</option>
-          <option value="Warning">Uyarı</option>
-          <option value="Error">Hata</option>
-          <option value="Critical">Kritik</option>
-        </select>
-        <input
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+        <NativeSelect size="sm" value={level} onChange={(e) => setLevel(e.target.value)}>
+          <NativeSelectOption value="">Tüm seviyeler</NativeSelectOption>
+          <NativeSelectOption value="Information">Bilgi</NativeSelectOption>
+          <NativeSelectOption value="Warning">Uyarı</NativeSelectOption>
+          <NativeSelectOption value="Error">Hata</NativeSelectOption>
+          <NativeSelectOption value="Critical">Kritik</NativeSelectOption>
+        </NativeSelect>
+        <Input
+          className="h-7 w-auto"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Ara..."
@@ -51,19 +50,21 @@ export default function AdminLoglarPage() {
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <div className="flex flex-col gap-1 overflow-x-auto rounded-md border border-border bg-card p-2 font-mono text-xs">
-        {logs.length === 0 ? (
-          <p className="p-2 text-muted-foreground">Kayıt yok.</p>
-        ) : (
-          logs.map((log, i) => (
-            <div key={i} className="whitespace-nowrap">
-              <span className="text-muted-foreground">{new Date(log.timestampUtc).toLocaleTimeString("tr-TR")}</span>{" "}
-              <span className={log.level === "Error" || log.level === "Critical" ? "text-destructive" : ""}>[{log.level}]</span>{" "}
-              <span className="text-muted-foreground">{log.category}</span> — {log.message}
-            </div>
-          ))
-        )}
-      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-1 overflow-x-auto font-mono text-xs">
+          {logs.length === 0 ? (
+            <p className="text-muted-foreground">Kayıt yok.</p>
+          ) : (
+            logs.map((log, i) => (
+              <div key={i} className="whitespace-nowrap">
+                <span className="text-muted-foreground">{new Date(log.timestampUtc).toLocaleTimeString("tr-TR")}</span>{" "}
+                <span className={log.level === "Error" || log.level === "Critical" ? "text-destructive" : ""}>[{log.level}]</span>{" "}
+                <span className="text-muted-foreground">{log.category}</span> — {log.message}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

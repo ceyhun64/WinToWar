@@ -1,21 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { API_BASE_URL } from "@/lib/game/api";
 
 type ComponentStatus = "checking" | "up" | "down";
 
 function StatusRow({ label, status }: { label: string; status: ComponentStatus }) {
-  const color = status === "up" ? "bg-green-500" : status === "down" ? "bg-destructive" : "bg-muted-foreground";
+  const variant = status === "up" ? "default" : status === "down" ? "destructive" : "outline";
   const text = status === "up" ? "Çalışıyor" : status === "down" ? "Kesinti" : "Kontrol ediliyor...";
   return (
-    <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
-      <span className="text-sm font-medium">{label}</span>
-      <span className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className={`size-2 rounded-full ${color}`} />
-        {text}
-      </span>
-    </div>
+    <Card size="sm">
+      <CardContent className="flex items-center justify-between">
+        <span className="text-sm font-medium">{label}</span>
+        <Badge variant={variant}>{text}</Badge>
+      </CardContent>
+    </Card>
   );
 }
 
