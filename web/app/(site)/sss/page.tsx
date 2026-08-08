@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { HelpCircle } from "lucide-react";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHero } from "@/components/layout/PageHero";
+import { GameCard } from "@/components/layout/GameCard";
+import { canonicalFor } from "@/lib/metadata";
 
 export const metadata: Metadata = {
   title: "Sıkça Sorulan Sorular — WinToWar",
   description: "Yatırma/çekim süresi, komisyon hesaplama, maç iptali gibi sık sorulan sorular.",
+  ...canonicalFor("/sss"),
 };
 
 const FAQ_ITEMS = [
@@ -29,18 +34,35 @@ const FAQ_ITEMS = [
   },
 ];
 
+/**
+ * docs/12-seo.md Bölüm 5 (v3.1): FAQPage JSON-LD, sayfada gösterilen
+ * `FAQ_ITEMS`'tan programatik olarak türetilir — aynı soru/cevap metni HTML'e
+ * bir kez, JSON-LD'ye elle ikinci bir kez yazılmaz (senkron dışı kalma riski
+ * önlenir). Kullanıcıya görünmeyen, ekstra bir soru/cevap eklenmez.
+ */
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ_ITEMS.map((item) => ({
+    "@type": "Question",
+    name: item.question,
+    acceptedAnswer: { "@type": "Answer", text: item.answer },
+  })),
+};
+
 export default function SssPage() {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8">
-      <h1 className="text-2xl font-semibold">Sıkça Sorulan Sorular</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
+      <PageHero icon={HelpCircle} title="Sıkça Sorulan Sorular" />
       <div className="flex flex-col gap-4">
         {FAQ_ITEMS.map((item) => (
-          <Card key={item.question}>
+          <GameCard key={item.question}>
             <CardHeader>
               <CardTitle>{item.question}</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">{item.answer}</CardContent>
-          </Card>
+          </GameCard>
         ))}
       </div>
       <p className="text-sm text-muted-foreground">

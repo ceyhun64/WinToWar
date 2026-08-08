@@ -23,7 +23,4 @@ public class PaymentEventNotifier
 
     public Task NotifyPayoutCompletedAsync(string matchId, PayoutCompletedEvent payload, CancellationToken cancellationToken) =>
         _hubContext.Clients.Group(matchId).SendAsync("PayoutCompleted", payload, cancellationToken);
-
-    public Task NotifyRefundCompletedAsync(string matchId, RefundCompletedEvent payload, CancellationToken cancellationToken) =>
-        _hubContext.Clients.Group(matchId).SendAsync("RefundCompleted", payload, cancellationToken);
 }

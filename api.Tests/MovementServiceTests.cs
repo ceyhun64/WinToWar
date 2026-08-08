@@ -88,6 +88,67 @@ public class MovementServiceTests
     }
 
     [Fact]
+    public void DepartArmy_MultipleCalls_AssignsStrictlyIncreasingSequenceNo()
+    {
+        var (match, player, region) = CreateOwnedRegion("luxembourg-city", soldiers: 10);
+        var now = DateTime.UtcNow;
+
+        var first = _sut.DepartArmy(match, player, region, "esch-sur-alzette", now);
+        region.SoldierCount = 10; // ikinci gönderim için yeniden doldur.
+        var second = _sut.DepartArmy(match, player, region, "steinfort", now);
+
+        Assert.Equal(0, first.SequenceNo);
+        Assert.Equal(1, second.SequenceNo);
+    }
+
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 10 "Tam eşzamanlı varış — tie-break kuralı":
+    /// ArrivesAtUtc birebir eşit olan iki ordu, oluşturulma/yola çıkma sırasına
+    /// (SequenceNo) göre işlenmeli, rastgele Army.Id'ye göre DEĞİL. Id'ler burada
+    /// kasıtlı olarak TERS alfabetik sırada verildi — eski (hatalı) Id-tabanlı
+    /// sıralama bu testi başarısız yapardı.
+    /// </summary>
+    [Fact]
+    public void ProcessArrivals_SimultaneousArrivalsAtSameRegion_ProcessedInSequenceOrderNotByRandomId()
+    {
+        var (match, player, _) = CreateOwnedRegion("luxembourg-city", soldiers: 10);
+        var target = new Region { Id = "esch-sur-alzette", OriginalOwnerId = null, OwnerId = null, SoldierCount = 100 };
+        match.Regions[target.Id] = target;
+        var now = DateTime.UtcNow;
+
+        var firstDeparted = new Army
+        {
+            Id = "z-departed-first",
+            SequenceNo = 0,
+            OwnerId = player.Id,
+            SoldierCount = 3,
+            FromRegionId = "x",
+            ToRegionId = target.Id,
+            DepartedAtUtc = now,
+            ArrivesAtUtc = now
+        };
+        var secondDeparted = new Army
+        {
+            Id = "a-departed-second",
+            SequenceNo = 1,
+            OwnerId = player.Id,
+            SoldierCount = 3,
+            FromRegionId = "y",
+            ToRegionId = target.Id,
+            DepartedAtUtc = now,
+            ArrivesAtUtc = now
+        };
+        match.Armies.Add(firstDeparted);
+        match.Armies.Add(secondDeparted);
+
+        var arrived = _sut.ProcessArrivals(match, now);
+
+        Assert.Equal(2, arrived.Count);
+        Assert.Equal(firstDeparted.Id, arrived[0].Id);
+        Assert.Equal(secondDeparted.Id, arrived[1].Id);
+    }
+
+    [Fact]
     public void ProcessArrivals_ReinforcementToOwnRegion_MergesGarrisonWithoutCombat()
     {
         var (match, player, region) = CreateOwnedRegion("luxembourg-city", soldiers: 10);

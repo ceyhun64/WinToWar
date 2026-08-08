@@ -33,7 +33,7 @@ public static class MatchFactory
         var players = new List<Player>();
         foreach (var playerId in playerIds)
         {
-            var player = matchManager.ReservePlayer(match, playerId, forcedPlayerId: playerId);
+            var player = matchManager.ReservePlayer(match, playerId, now, forcedPlayerId: playerId);
             matchManager.ConfirmPlayerPayment(match.Id, player.Id, now);
             players.Add(player);
         }

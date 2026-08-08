@@ -1,33 +1,17 @@
-import { API_BASE_URL } from "@/lib/game/api";
+import { authFetch } from "@/lib/identity";
 import type { PaymentInvoiceDto, WithdrawalRequestDto } from "@/lib/payments/types";
 
-const ADMIN_KEY_STORAGE_KEY = "wintowar:adminKey";
-
-export function getAdminKey(): string | null {
-  return window.sessionStorage.getItem(ADMIN_KEY_STORAGE_KEY);
-}
-
-export function setAdminKey(key: string): void {
-  window.sessionStorage.setItem(ADMIN_KEY_STORAGE_KEY, key);
-}
-
-export function clearAdminKey(): void {
-  window.sessionStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
-}
-
+/**
+ * docs/11-auth.md Bölüm 1.9/0.1: paylaşılan X-Admin-Key header'ı yerine gerçek
+ * oturum + Player.Role == Admin kontrolüne taşındı (bkz. api/Services/AdminAuthFilter.cs,
+ * components/admin/AdminGate.tsx). authFetch zaten Authorization Bearer header'ını
+ * ekliyor; [AdminAuth] filtresi bunun Admin rolüne ait olup olmadığını doğrular.
+ */
 async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      ...(options.headers ?? {}),
-      "X-Admin-Key": getAdminKey() ?? "",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
+  const res = await authFetch(path, options);
 
   if (res.status === 401) {
-    clearAdminKey();
-    throw new Error("Yetkisiz — admin anahtarı geçersiz.");
+    throw new Error("Yetkisiz — admin oturumu geçersiz.");
   }
   if (!res.ok) {
     throw new Error(`İstek başarısız oldu (${res.status})`);
@@ -55,6 +39,10 @@ export const rejectWithdrawal = (id: string) =>
   adminFetch<void>(`/api/admin/payments/withdrawals/${id}/reject`, { method: "POST" });
 
 export const getFailedInvoices = () => adminFetch<PaymentInvoiceDto[]>("/api/admin/payments/invoices/failed");
+
+/** docs/05-payment.md Bölüm 10.1: teknik arıza kaynaklı, admin-onaylı manuel iade. */
+export const refundInvoice = (invoiceId: string) =>
+  adminFetch<void>(`/api/admin/payments/invoices/${invoiceId}/refund`, { method: "POST" });
 
 export interface AdminMatchSummary {
   matchId: string;

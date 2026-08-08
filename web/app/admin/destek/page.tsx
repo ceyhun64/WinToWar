@@ -44,13 +44,13 @@ export default function AdminDestekPage() {
       {sorted.length === 0 ? (
         <p className="text-sm text-muted-foreground">Talep yok.</p>
       ) : (
-        <ul className="flex flex-col gap-2 text-sm">
+        <ul className="flex flex-col gap-3 text-sm">
           {sorted.map((t) => (
             <li key={t.id}>
               <Card>
                 <CardContent>
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 font-medium">
+                    <span className="flex items-center gap-3 font-medium">
                       {t.subject}
                       {t.matchId ? <Badge variant="secondary">Maç itirazı</Badge> : null}
                     </span>

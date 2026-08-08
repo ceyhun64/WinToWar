@@ -1,25 +1,24 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.Extensions.Options;
 
 namespace api.Services;
 
-/// <summary>Bkz. AdminConfig.cs gerekçesi — X-Admin-Key header'ı paylaşılan anahtarla eşleşmezse 401 döner.</summary>
+/// <summary>
+/// docs/11-auth.md Bölüm 1.9/0.1: önceden paylaşılan bir X-Admin-Key header'ıyla
+/// çalışıyordu (bkz. AdminConfig.cs) — artık gerçek bir rol-tabanlı kimlik doğrulama
+/// var, bu yüzden bu filtre gerçek Player.Role == Admin kontrolüne taşındı. İki
+/// paralel admin yetkilendirme sistemi bırakılmaz (Bölüm 0.1) — AdminConfig.AccessKey
+/// artık okunmuyor, bilinçli olarak kaldırılmadı (01-workflow-rules.md Bölüm 0.2
+/// "mevcut dosyayı yeniden düzenleme"), yalnızca bu görevin raporunda ölü alan
+/// olarak not düşülür. JWT Bearer authentication middleware (Program.cs) bu filtreden
+/// önce çalışır, context.HttpContext.User bu noktada zaten doldurulmuş olur.
+/// </summary>
 public class AdminAuthFilter : IAsyncActionFilter
 {
-    private const string HeaderName = "X-Admin-Key";
-    private readonly AdminConfig _config;
-
-    public AdminAuthFilter(IOptions<AdminConfig> config)
-    {
-        _config = config.Value;
-    }
-
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (!context.HttpContext.Request.Headers.TryGetValue(HeaderName, out var providedKey) ||
-            providedKey.Count == 0 ||
-            !CryptographicallyEqual(providedKey[0] ?? string.Empty, _config.AccessKey))
+        var user = context.HttpContext.User;
+        if (user.Identity?.IsAuthenticated != true || !user.IsInRole("Admin"))
         {
             context.Result = new UnauthorizedResult();
             return;
@@ -27,10 +26,6 @@ public class AdminAuthFilter : IAsyncActionFilter
 
         await next();
     }
-
-    private static bool CryptographicallyEqual(string a, string b) =>
-        System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
-            System.Text.Encoding.UTF8.GetBytes(a), System.Text.Encoding.UTF8.GetBytes(b));
 }
 
 public class AdminAuthAttribute : TypeFilterAttribute

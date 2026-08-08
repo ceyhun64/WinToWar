@@ -54,8 +54,14 @@ public class MatchManager
     /// <summary>
     /// Bir oyuncu için lobide bir slot ayırtır. VIP kurucusu için forcedPlayerId
     /// kullanılır ki RoomService'in Room.CreatorPlayerId'siyle aynı Id kullanılsın.
+    /// docs/03-game-rules.md Bölüm 7 (DÜZELTME): Standart/Practice lobisine giren
+    /// İLK gerçek (bot olmayan) oyuncu, GameConfig.BotMatchWaitMinSeconds-MaxSeconds
+    /// arası rastgele bir bot-doldurma zaman aşımı başlatır (VIP'de asla — kurucu
+    /// zaten manuel/"Şimdi Başlat" kontrolüne sahip, bkz. BotMatchService).
     /// </summary>
-    public Player ReservePlayer(Match match, string playerName, string? forcedPlayerId = null, string? joinIpAddress = null)
+    public Player ReservePlayer(
+        Match match, string playerName, DateTime now, string? forcedPlayerId = null, string? joinIpAddress = null,
+        bool isBot = false, BotDifficulty? botDifficulty = null)
     {
         lock (match.Lock)
         {
@@ -69,6 +75,12 @@ public class MatchManager
                 throw new InvalidOperationException("Lobi dolu.");
             }
 
+            if (!isBot && match.Players.Count == 0 && match.Room.Type != RoomType.Vip)
+            {
+                match.BotFillDeadlineUtc = now.AddSeconds(
+                    Random.Shared.Next(GameConfig.BotMatchWaitMinSeconds, GameConfig.BotMatchWaitMaxSeconds + 1));
+            }
+
             var player = new Player
             {
                 Id = forcedPlayerId ?? Guid.NewGuid().ToString("N"),
@@ -76,7 +88,9 @@ public class MatchManager
                 Name = playerName,
                 ConnectionId = null,
                 ConnectionStatus = PlayerConnectionStatus.Disconnected,
-                JoinIpAddress = joinIpAddress
+                JoinIpAddress = joinIpAddress,
+                IsBot = isBot,
+                BotDifficulty = botDifficulty
             };
 
             if (joinIpAddress is not null && match.Players.Any(p => p.JoinIpAddress == joinIpAddress))

@@ -1,32 +1,31 @@
 using System.Globalization;
+using System.Security.Claims;
 using api.Models.Rooms;
+using api.Models.Rooms.Dtos;
 using api.Services;
 using api.Services.Payments;
 using api.Services.Rooms;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace api.Controllers;
 
 /// <summary>
-/// 🛠️ PlayerId, client tarafından üretilip localStorage'da kalıcı olarak saklanan
-/// bir kimliktir (auth modülü henüz netleşmedi — bkz. Wallet.cs) — Wallet/oda
-/// rezervasyonu bu id üzerinden eşleşir. PayoutAddress, ücretsiz (Practice) olmayan
-/// her katılımda gereklidir — bakiye yeterliyse kazanılırsa ödülün gönderileceği
-/// adres olarak Wallet'a kaydedilir, yetersizse ayrıca eksik tutar invoice'ının
-/// PayoutAddress'i olarak kullanılır. Daha önce sağlanmış bir adres varsa (Wallet'ta
-/// kayıtlı) tekrar gönderilmesi gerekmez — null bırakılabilir.
+/// docs/11-auth.md Bölüm 0.4: PlayerId artık istemciden alınmaz, JWT'nin sub
+/// claim'inden okunur (bkz. RoomsController.CurrentPlayerId) — Wallet/oda
+/// rezervasyonu bu id üzerinden eşleşir. Katılım hiçbir LTC adresi istemez —
+/// giriş ücreti doğrudan Wallet.BalanceUsd'den düşülür, yetmezse bir top-up
+/// invoice'ı açılır (bkz. RoomEntryService, PaymentService).
 /// </summary>
-public record JoinRoomRequest(string PlayerId, string PlayerName, string? PayoutAddress);
+public record JoinRoomRequest(string PlayerName);
 
 public record CreateVipRoomRequest(
-    string PlayerId,
     string PlayerName,
     int MaxPlayers,
     int GreyRegionDefenseCount,
     bool FogOfWar,
     decimal EntryFeeUsd,
-    string? Password,
-    string? PayoutAddress);
+    string? Password);
 
 public record JoinRoomResult(
     string Outcome,
@@ -36,8 +35,6 @@ public record JoinRoomResult(
     string? ShortfallUsd,
     api.Models.Payments.Dtos.PaymentInvoiceDto? Invoice);
 
-public record RoomSummaryResponse(string MatchId, string RoomName, int PlayerCount, int MaxPlayers, string EntryFeeUsd, bool FogOfWar, int GreyRegionDefenseCount, bool IsPasswordProtected);
-
 public record VerifyRoomPasswordRequest(string Password);
 
 /// <summary>
@@ -45,9 +42,10 @@ public record VerifyRoomPasswordRequest(string Password);
 /// docs/07-pages.md `/lobi`, `/lobi/vip-olustur`, `/lobi/[inviteToken]`). Giriş
 /// ücretinin tahsilatı (Wallet düşümü / top-up-ve-katıl invoice akışı,
 /// docs/05-payment.md Bölüm 1.9) burada RoomEntryService üzerinden aynı istekte
-/// yürütülür — bakiye yeterliyse doğrudan katılım, yetmiyorsa eksik tutar (ve
-/// PayoutAddress verildiyse hazır bir invoice) döner.
+/// yürütülür — bakiye yeterliyse doğrudan katılım, yetmiyorsa eksik tutar için
+/// sunucu doğrudan bir invoice döner (hiçbir adım LTC adresi istemez).
 /// </summary>
+[Authorize]
 [ApiController]
 [Route("api/rooms")]
 public class RoomsController : ControllerBase
@@ -65,34 +63,36 @@ public class RoomsController : ControllerBase
         _paymentService = paymentService;
     }
 
+    private string CurrentPlayerId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
     [HttpGet]
     public ActionResult<List<RoomSummaryResponse>> ListOpenRooms([FromQuery] RoomType type)
     {
-        var rooms = _roomService.ListOpenRooms(type).Select(ToRoomSummaryResponse).ToList();
+        var rooms = _roomService.ListOpenRooms(type).Select(_roomService.ToRoomSummaryResponse).ToList();
         return Ok(rooms);
     }
 
     [HttpPost("standard/join")]
     public async Task<ActionResult<JoinRoomResult>> JoinStandard([FromBody] JoinRoomRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.PlayerName) || string.IsNullOrWhiteSpace(request.PlayerId))
+        if (string.IsNullOrWhiteSpace(request.PlayerName))
         {
-            return BadRequest("Oyuncu adı ve kimliği gereklidir.");
+            return BadRequest("Oyuncu adı gereklidir.");
         }
 
         var match = _roomService.FindOrCreateStandardMatch(DateTime.UtcNow);
-        return Ok(await TryJoinAndRespondAsync(match.Id, request.PlayerId, request.PlayerName.Trim(), request.PayoutAddress, cancellationToken));
+        return Ok(await TryJoinAndRespondAsync(match.Id, CurrentPlayerId, request.PlayerName.Trim(), cancellationToken));
     }
 
     [HttpPost("practice/join")]
     public ActionResult<JoinRoomResult> JoinPractice([FromBody] JoinRoomRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.PlayerName) || string.IsNullOrWhiteSpace(request.PlayerId))
+        if (string.IsNullOrWhiteSpace(request.PlayerName))
         {
-            return BadRequest("Oyuncu adı ve kimliği gereklidir.");
+            return BadRequest("Oyuncu adı gereklidir.");
         }
 
-        var (match, player) = _roomService.JoinPracticeQueue(request.PlayerName.Trim(), DateTime.UtcNow);
+        var (match, player) = _roomService.JoinPracticeQueue(CurrentPlayerId, request.PlayerName.Trim(), DateTime.UtcNow);
         return Ok(new JoinRoomResult("Joined", match.Id, player.Id, player.Slot, null, null));
     }
 
@@ -105,16 +105,16 @@ public class RoomsController : ControllerBase
     [HttpPost("vip")]
     public async Task<ActionResult<JoinRoomResult>> CreateVipRoom([FromBody] CreateVipRoomRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.PlayerName) || string.IsNullOrWhiteSpace(request.PlayerId))
+        if (string.IsNullOrWhiteSpace(request.PlayerName))
         {
-            return BadRequest("Oyuncu adı ve kimliği gereklidir.");
+            return BadRequest("Oyuncu adı gereklidir.");
         }
 
         Models.Match match;
         try
         {
             (match, _) = _roomService.CreateVipRoom(
-                request.PlayerId,
+                CurrentPlayerId,
                 request.PlayerName.Trim(),
                 request.MaxPlayers,
                 request.GreyRegionDefenseCount,
@@ -129,7 +129,7 @@ public class RoomsController : ControllerBase
             return BadRequest(ex.Message);
         }
 
-        return Ok(await TryJoinAndRespondAsync(match.Id, request.PlayerId, request.PlayerName.Trim(), request.PayoutAddress, cancellationToken));
+        return Ok(await TryJoinAndRespondAsync(match.Id, CurrentPlayerId, request.PlayerName.Trim(), cancellationToken));
     }
 
     [HttpGet("invite/{inviteToken}")]
@@ -141,26 +141,7 @@ public class RoomsController : ControllerBase
             return NotFound();
         }
 
-        return Ok(ToRoomSummaryResponse(match));
-    }
-
-    /// <summary>
-    /// docs/08-page-content.md Bölüm 3.4: liste ve davet-token uçlarının ikisi de
-    /// aynı oda kimliği türetme mantığını (RoomDisplayNameFormatter) kullanır —
-    /// bkz. `06-coding-standards.md` "Kod Tekrarını Önleme".
-    /// </summary>
-    private static RoomSummaryResponse ToRoomSummaryResponse(Models.Match match)
-    {
-        var creatorName = match.Players.FirstOrDefault(p => p.Id == match.Room.CreatorPlayerId)?.Name;
-        return new RoomSummaryResponse(
-            match.Id,
-            RoomDisplayNameFormatter.Format(match.Room.Type, creatorName),
-            match.Players.Count,
-            match.Room.MaxPlayers,
-            match.Room.EntryFeeUsd.ToString(CultureInfo.InvariantCulture),
-            match.Room.FogOfWar,
-            match.Room.GreyRegionDefenseCount,
-            match.Room.IsPasswordProtected);
+        return Ok(_roomService.ToRoomSummaryResponse(match));
     }
 
     [HttpPost("{matchId}/verify-password")]
@@ -178,9 +159,9 @@ public class RoomsController : ControllerBase
     [HttpPost("{matchId}/join")]
     public async Task<ActionResult<JoinRoomResult>> JoinSpecificRoom(string matchId, [FromBody] JoinRoomRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.PlayerName) || string.IsNullOrWhiteSpace(request.PlayerId))
+        if (string.IsNullOrWhiteSpace(request.PlayerName))
         {
-            return BadRequest("Oyuncu adı ve kimliği gereklidir.");
+            return BadRequest("Oyuncu adı gereklidir.");
         }
 
         if (!_matchManager.TryGetMatch(matchId, out _))
@@ -188,14 +169,20 @@ public class RoomsController : ControllerBase
             return NotFound("Oda bulunamadı.");
         }
 
-        return Ok(await TryJoinAndRespondAsync(matchId, request.PlayerId, request.PlayerName.Trim(), request.PayoutAddress, cancellationToken));
+        return Ok(await TryJoinAndRespondAsync(matchId, CurrentPlayerId, request.PlayerName.Trim(), cancellationToken));
     }
 
+    /// <summary>
+    /// Katılım hiçbir LTC adresi istemez. Bakiye yetersizse (Practice hariç her
+    /// oda için) sunucu her zaman doğrudan bir top-up invoice'ı açar — kullanıcı
+    /// BTCPay'in kendi ürettiği ödeme adresi/QR'ı ile öder (bkz. docs/05-payment.md
+    /// Bölüm 1.9), ayrıca bir adres girmesi istenmez.
+    /// </summary>
     private async Task<JoinRoomResult> TryJoinAndRespondAsync(
-        string matchId, string playerId, string playerName, string? payoutAddress, CancellationToken cancellationToken)
+        string matchId, string playerId, string playerName, CancellationToken cancellationToken)
     {
         var joinIpAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
-        var result = await _roomEntryService.TryJoinAsync(matchId, playerId, playerName, payoutAddress, DateTime.UtcNow, cancellationToken, joinIpAddress);
+        var result = await _roomEntryService.TryJoinAsync(matchId, playerId, playerName, DateTime.UtcNow, cancellationToken, joinIpAddress);
 
         switch (result.Outcome)
         {
@@ -205,22 +192,11 @@ public class RoomsController : ControllerBase
             case RoomEntryOutcome.RoomFull:
                 return new JoinRoomResult("RoomFull", matchId, null, null, null, null);
 
-            case RoomEntryOutcome.PayoutAddressRequired:
-                return new JoinRoomResult("PayoutAddressRequired", matchId, null, null, null, null);
-
-            case RoomEntryOutcome.InvalidPayoutAddress:
-                return new JoinRoomResult("InvalidPayoutAddress", matchId, null, null, null, null);
-
             default: // InsufficientBalance
                 var shortfallText = result.ShortfallUsd.ToString(CultureInfo.InvariantCulture);
-                if (string.IsNullOrWhiteSpace(payoutAddress))
-                {
-                    return new JoinRoomResult("InsufficientBalance", matchId, null, null, shortfallText, null);
-                }
-
                 try
                 {
-                    var invoice = await _paymentService.CreateMatchEntryInvoiceAsync(matchId, playerId, playerName, payoutAddress, cancellationToken);
+                    var invoice = await _paymentService.CreateMatchEntryInvoiceAsync(matchId, playerId, playerName, cancellationToken);
                     return new JoinRoomResult("InsufficientBalance", matchId, null, null, shortfallText, invoice);
                 }
                 catch (PaymentValidationException)

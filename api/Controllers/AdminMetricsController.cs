@@ -2,7 +2,6 @@ using api.Models;
 using api.Services;
 using api.Services.Payments;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace api.Controllers;
 
@@ -14,13 +13,13 @@ public record AdminMetricsResponse(int PendingWithdrawalCount, int ActiveMatchCo
 [Route("api/admin/metrics")]
 public class AdminMetricsController : ControllerBase
 {
-    private readonly PaymentDbContext _db;
+    private readonly WalletService _walletService;
     private readonly PaymentService _paymentService;
     private readonly MatchManager _matchManager;
 
-    public AdminMetricsController(PaymentDbContext db, PaymentService paymentService, MatchManager matchManager)
+    public AdminMetricsController(WalletService walletService, PaymentService paymentService, MatchManager matchManager)
     {
-        _db = db;
+        _walletService = walletService;
         _paymentService = paymentService;
         _matchManager = matchManager;
     }
@@ -28,8 +27,7 @@ public class AdminMetricsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<AdminMetricsResponse>> Get(CancellationToken cancellationToken)
     {
-        var pendingWithdrawalCount = await _db.WithdrawalRequests
-            .CountAsync(w => w.Status == Models.Payments.WithdrawalRequestStatus.Pending, cancellationToken);
+        var pendingWithdrawalCount = await _walletService.CountPendingWithdrawalsAsync(cancellationToken);
 
         var activeMatchCount = _matchManager.ActiveMatches.Count(m =>
             m.Status is MatchStatus.Lobby or MatchStatus.Countdown or MatchStatus.Playing);

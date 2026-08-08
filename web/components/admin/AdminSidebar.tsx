@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { clearAdminKey } from "@/lib/admin/api";
+import { signOut } from "@/lib/identity";
 
 const LINKS = [
   { href: "/admin", label: "Özet" },
@@ -32,7 +32,7 @@ export function AdminSidebar() {
       <button
         className="mt-auto rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted"
         onClick={() => {
-          clearAdminKey();
+          signOut();
           window.location.reload();
         }}
       >

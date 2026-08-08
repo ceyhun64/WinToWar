@@ -1,5 +1,7 @@
+using System.Security.Claims;
 using api.Models.Payments.Dtos;
 using api.Services.Payments;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace api.Controllers;
@@ -8,7 +10,11 @@ namespace api.Controllers;
 /// Bölüm 3.1: giriş ücreti ödeme akışının REST giriş noktası. Ödeme modülü ana
 /// oyun motorundan ayrı bir katman olduğundan bu controller MatchesController'a
 /// dokunmadan eklenmiştir.
+///
+/// docs/11-auth.md Bölüm 0.4: PlayerId istemciden asla alınmaz, JWT'nin sub
+/// claim'inden okunur (bkz. CurrentPlayerId).
 /// </summary>
+[Authorize]
 [ApiController]
 [Route("api/matches/{matchId}/payments")]
 public class PaymentsController : ControllerBase
@@ -19,6 +25,8 @@ public class PaymentsController : ControllerBase
     {
         _paymentService = paymentService;
     }
+
+    private string CurrentPlayerId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     /// <summary>
     /// docs/05-payment.md Bölüm 1.9: yalnızca bakiye giriş ücretine yetmediğinde
@@ -32,7 +40,7 @@ public class PaymentsController : ControllerBase
         try
         {
             var dto = await _paymentService.CreateMatchEntryInvoiceAsync(
-                matchId, request.PlayerId, request.PlayerName, request.PayoutAddress, cancellationToken);
+                matchId, CurrentPlayerId, request.PlayerName, cancellationToken);
             return Ok(dto);
         }
         catch (PaymentValidationException ex)
@@ -46,6 +54,7 @@ public class PaymentsController : ControllerBase
         }
     }
 
+    /// <summary>🔒 Yetki Matrisi: bkz. InvoicesController.GetInvoice'daki aynı sahiplik-doğrulama gerekçesi.</summary>
     [HttpGet("{invoiceId}")]
     public async Task<ActionResult<PaymentInvoiceDto>> GetInvoice(string matchId, string invoiceId, CancellationToken cancellationToken)
     {
@@ -56,7 +65,13 @@ public class PaymentsController : ControllerBase
 
         try
         {
-            return Ok(await _paymentService.GetInvoiceAsync(id, cancellationToken));
+            var dto = await _paymentService.GetInvoiceAsync(id, cancellationToken);
+            if (dto.PlayerId != CurrentPlayerId)
+            {
+                return NotFound(new PaymentErrorResponse { Code = "INVOICE_NOT_FOUND", Message = "Invoice bulunamadı." });
+            }
+
+            return Ok(dto);
         }
         catch (PaymentInvoiceNotFoundException)
         {

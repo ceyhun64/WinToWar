@@ -2,92 +2,75 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
+import { History, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CardContent } from "@/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { PageHero } from "@/components/layout/PageHero";
+import { GameCard } from "@/components/layout/GameCard";
+import { InvoiceRow } from "@/components/payments/InvoiceRow";
 import { getInvoiceHistory } from "@/lib/payments/api";
 import type { PaymentInvoiceDto } from "@/lib/payments/types";
-import { isSignedIn } from "@/lib/identity";
+import { AuthGuard } from "@/components/layout/AuthGuard";
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  Pending: "outline",
-  Confirmed: "default",
-  Expired: "destructive",
-  Refunded: "secondary",
-  Failed: "destructive",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  Pending: "Bekliyor",
-  Confirmed: "Onaylandı",
-  Expired: "Süresi Doldu",
-  Refunded: "İade Edildi",
-  Failed: "Başarısız",
-};
-
-/** docs/07-pages.md `/gecmis`: ödeme/maç geçmişi tablosu. */
+/**
+ * docs/07-pages.md `/gecmis`: ödeme/maç geçmişi tablosu.
+ * `docs/04-style.md` Landing İstisnası — sitede genelleştirilmiş tasarım
+ * sistemi: satırlar `/cuzdan`'daki "Son İşlemler" ile aynı `InvoiceRow`
+ * bileşenini paylaşır (kod tekrarı yok, aynı ikon/renk dili). Not: burada
+ * gösterilen veri ödeme/fatura geçmişidir — kazanan/kaybeden, harita, süre
+ * gibi "maç sonucu" alanları `PaymentInvoiceDto`'da yok (bu bilgi
+ * `/mac/[matchId]`'de), bu yüzden burada uydurulmadı.
+ */
 export default function GecmisPage() {
-  const router = useRouter();
+  return (
+    <AuthGuard>
+      <GecmisPageContent />
+    </AuthGuard>
+  );
+}
+
+function GecmisPageContent() {
   const [invoices, setInvoices] = useState<PaymentInvoiceDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSignedIn()) {
-      router.replace("/giris");
-      return;
-    }
     getInvoiceHistory()
       .then(setInvoices)
       .catch((err) => setError(String(err)));
-  }, [router]);
+  }, []);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 py-8">
-      <h1 className="text-lg font-semibold">Geçmiş</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
+      <PageHero icon={History} title="Geçmiş" subtitle="Ödeme ve maç giriş kayıtların." />
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       {invoices === null ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
       ) : invoices.length === 0 ? (
-        <Empty className="p-6">
-          <EmptyHeader>
-            <EmptyTitle>Henüz bir işleminiz yok</EmptyTitle>
-            <EmptyDescription>Bir odaya katılın veya bakiyenizi yükleyin.</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button render={<Link href="/lobi" />}>Lobiye Git</Button>
-          </EmptyContent>
-        </Empty>
+        <GameCard className="p-2">
+          <Empty className="p-6">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ScrollText aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>Henüz bir işleminiz yok</EmptyTitle>
+              <EmptyDescription>Bir odaya katılın veya bakiyenizi yükleyin.</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button render={<Link href="/lobi" />}>Lobiye Git</Button>
+            </EmptyContent>
+          </Empty>
+        </GameCard>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Tarih</TableHead>
-              <TableHead>Tür</TableHead>
-              <TableHead className="text-right">Tutar (USD)</TableHead>
-              <TableHead className="text-right">Durum</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <GameCard className="p-2">
+          <CardContent className="flex flex-col gap-1 px-2">
             {invoices.map((invoice) => (
-              <TableRow key={invoice.invoiceId}>
-                <TableCell className="text-xs text-muted-foreground">
-                  {new Date(invoice.createdAt).toLocaleDateString("tr-TR")}
-                </TableCell>
-                <TableCell>{invoice.matchId ? "Maça Giriş" : "Para Yatırma"}</TableCell>
-                <TableCell className="text-right tabular-nums">${invoice.amountUsd}</TableCell>
-                <TableCell className="text-right">
-                  <Badge variant={STATUS_VARIANT[invoice.status] ?? "outline"}>
-                    {STATUS_LABEL[invoice.status] ?? invoice.status}
-                  </Badge>
-                </TableCell>
-              </TableRow>
+              <InvoiceRow key={invoice.invoiceId} invoice={invoice} />
             ))}
-          </TableBody>
-        </Table>
+          </CardContent>
+        </GameCard>
       )}
     </div>
   );

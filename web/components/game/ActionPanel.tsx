@@ -79,13 +79,13 @@ export function ActionPanel({ map, state, myPlayerId, selectedRegionId, gameConf
         <p className="text-xs text-muted-foreground">Üretim: 10sn&apos;de {myProduction} asker</p>
       </CardHeader>
 
-      <CardContent className="flex flex-col gap-2 border-t border-border pt-3">
+      <CardContent className="flex flex-col gap-3 border-t border-border pt-3">
         <span className="text-xs font-medium text-muted-foreground">Komşu Bölgeler</span>
         <ul className="flex flex-col gap-1 text-sm">
           {neighbors.map(({ neighborRegion, neighborState, neighborOwnerName }) => (
             <li key={neighborRegion.id} className="flex items-center justify-between">
               <span>{neighborRegion.name}</span>
-              <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="flex items-center gap-3 text-muted-foreground">
                 {neighborState.ownerId === myPlayerId ? (
                   <Badge variant="secondary">Sizin</Badge>
                 ) : (

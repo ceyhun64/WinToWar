@@ -32,7 +32,7 @@ export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
           const regionCount = state.regions.filter((r) => r.ownerId === player.id).length;
           const isMe = player.id === myPlayerId;
           return (
-            <div key={player.id} className="flex items-center gap-2">
+            <div key={player.id} className="flex items-center gap-3">
               <span
                 className="inline-block size-3 rounded-sm"
                 style={{ backgroundColor: colorForSlot(player.slot) }}
@@ -44,9 +44,12 @@ export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
                 </span>
                 <span className="text-xs text-muted-foreground">{regionCount} bölge</span>
               </div>
+              {/* docs/03-game-rules.md Bölüm 7: rakip bot olduğunda her zaman açıkça
+                  belirtilir — insan olduğu izlenimi hiçbir şekilde verilmez. */}
+              {player.isBot ? <Badge variant="secondary">Bot</Badge> : null}
               {player.isEliminated ? (
                 <Badge variant="destructive">Elendi</Badge>
-              ) : !player.isConnected ? (
+              ) : !player.isConnected && !player.isBot ? (
                 <Badge variant="outline">Bağlı değil</Badge>
               ) : null}
             </div>

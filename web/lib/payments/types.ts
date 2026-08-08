@@ -24,19 +24,16 @@ export interface PaymentInvoiceDto {
   requiredConfirmations: number;
 }
 
+/** Kazanç artık on-chain LTC değil, doğrudan Wallet.BalanceUsd'ye kredi olarak işlenir (bkz. PayoutService). */
 export interface PayoutRecipientDto {
   winnerPlayerId: string;
-  payoutAddress: string;
-  amountLtc: string;
-  status: string;
-  btcPayTransactionId: string | null;
+  amountUsd: string;
 }
 
 export interface PayoutSummaryDto {
   matchId: string;
-  status: string;
-  totalPoolLtc: string;
-  commissionLtc: string;
+  totalPoolUsd: string;
+  commissionUsd: string;
   recipients: PayoutRecipientDto[];
 }
 

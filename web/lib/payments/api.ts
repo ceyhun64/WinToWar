@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "@/lib/game/api";
-import { getOrCreatePlayerId } from "@/lib/identity";
+import { authFetch } from "@/lib/identity";
 import type { PaymentErrorResponse, PaymentInvoiceDto, PayoutSummaryDto, WalletDto, WithdrawalRequestDto } from "./types";
 
 async function parsePaymentResponse<T>(res: Response): Promise<T> {
@@ -16,23 +16,22 @@ async function parsePaymentResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function createPaymentInvoice(
-  matchId: string,
-  playerId: string,
-  playerName: string,
-  payoutAddress: string
-): Promise<PaymentInvoiceDto> {
-  const res = await fetch(`${API_BASE_URL}/api/matches/${matchId}/payments`, {
+/** docs/11-auth.md Bölüm 0.4: playerId artık gönderilmez, backend JWT'den okur (bkz. PaymentsController). */
+export async function createPaymentInvoice(matchId: string, playerName: string): Promise<PaymentInvoiceDto> {
+  const res = await authFetch(`/api/matches/${matchId}/payments`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ playerId, playerName, payoutAddress }),
+    body: JSON.stringify({ playerName }),
   });
   return parsePaymentResponse<PaymentInvoiceDto>(res);
 }
 
-/** docs/07-pages.md `/odeme/[invoiceId]`: matchId'den bağımsız, tek sorgu ucu (top-up ve maça giriş invoice'ları için ortak). */
+/**
+ * docs/07-pages.md `/odeme/[invoiceId]`: matchId'den bağımsız, tek sorgu ucu
+ * (top-up ve maça giriş invoice'ları için ortak). 🔒 Sahiplik kontrolü backend'de
+ * JWT'den okunan playerId üzerinden yapılır (bkz. api/Controllers/InvoicesController.cs).
+ */
 export async function getPaymentInvoice(invoiceId: string): Promise<PaymentInvoiceDto> {
-  const res = await fetch(`${API_BASE_URL}/api/payments/${invoiceId}`);
+  const res = await authFetch(`/api/payments/${invoiceId}`);
   return parsePaymentResponse<PaymentInvoiceDto>(res);
 }
 
@@ -50,7 +49,7 @@ export async function simulatePaymentPaid(invoiceId: string): Promise<void> {
 }
 
 export async function getInvoiceHistory(): Promise<PaymentInvoiceDto[]> {
-  const res = await fetch(`${API_BASE_URL}/api/wallet/${getOrCreatePlayerId()}/invoices`);
+  const res = await authFetch(`/api/wallet/invoices`);
   return parsePaymentResponse<PaymentInvoiceDto[]>(res);
 }
 
@@ -64,30 +63,28 @@ export async function getPayoutSummary(matchId: string): Promise<PayoutSummaryDt
 }
 
 export async function getWalletBalance(): Promise<WalletDto> {
-  const res = await fetch(`${API_BASE_URL}/api/wallet/${getOrCreatePlayerId()}`);
+  const res = await authFetch(`/api/wallet`);
   return parsePaymentResponse<WalletDto>(res);
 }
 
 /** docs/08-page-content.md Bölüm 3.9: "Bekleyen Transferler" kartı — henüz sonuçlanmamış çekim talepleri. */
 export async function getPendingWithdrawals(): Promise<WithdrawalRequestDto[]> {
-  const res = await fetch(`${API_BASE_URL}/api/wallet/${getOrCreatePlayerId()}/withdrawals`);
+  const res = await authFetch(`/api/wallet/withdrawals`);
   return parsePaymentResponse<WithdrawalRequestDto[]>(res);
 }
 
-export async function createTopUpInvoice(amountUsd: number, payoutAddress: string): Promise<PaymentInvoiceDto> {
-  const res = await fetch(`${API_BASE_URL}/api/wallet/topup`, {
+export async function createTopUpInvoice(amountUsd: number): Promise<PaymentInvoiceDto> {
+  const res = await authFetch(`/api/wallet/topup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ playerId: getOrCreatePlayerId(), amountUsd, payoutAddress }),
+    body: JSON.stringify({ amountUsd }),
   });
   return parsePaymentResponse<PaymentInvoiceDto>(res);
 }
 
 export async function requestWithdrawal(amountUsd: number, destinationLtcAddress: string): Promise<WithdrawalRequestDto> {
-  const res = await fetch(`${API_BASE_URL}/api/wallet/withdraw`, {
+  const res = await authFetch(`/api/wallet/withdraw`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ playerId: getOrCreatePlayerId(), amountUsd, destinationLtcAddress }),
+    body: JSON.stringify({ amountUsd, destinationLtcAddress }),
   });
   return parsePaymentResponse<WithdrawalRequestDto>(res);
 }

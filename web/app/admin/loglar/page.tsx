@@ -29,7 +29,7 @@ export default function AdminLoglarPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-lg font-semibold">Loglar</h1>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-3">
         <NativeSelect size="sm" value={level} onChange={(e) => setLevel(e.target.value)}>
           <NativeSelectOption value="">Tüm seviyeler</NativeSelectOption>
           <NativeSelectOption value="Information">Bilgi</NativeSelectOption>

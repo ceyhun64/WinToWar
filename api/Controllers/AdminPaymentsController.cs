@@ -43,4 +43,23 @@ public class AdminPaymentsController : ControllerBase
     {
         return Ok(await _paymentService.GetFailedInvoicesAsync(cancellationToken));
     }
+
+    /// <summary>docs/05-payment.md Bölüm 10.1: teknik arıza kaynaklı, admin-onaylı manuel iade.</summary>
+    [HttpPost("invoices/{invoiceId}/refund")]
+    public async Task<IActionResult> RefundInvoice(Guid invoiceId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _paymentService.SubmitManualRefundAsync(invoiceId, cancellationToken);
+            return Ok();
+        }
+        catch (PaymentInvoiceNotFoundException)
+        {
+            return NotFound(new PaymentErrorResponse { Code = "INVOICE_NOT_FOUND", Message = "Invoice bulunamadı." });
+        }
+        catch (PaymentValidationException ex)
+        {
+            return BadRequest(new PaymentErrorResponse { Code = ex.Code, Message = ex.Message });
+        }
+    }
 }

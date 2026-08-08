@@ -63,14 +63,14 @@ public class PaymentService
 
     /// <summary>Bölüm 1.9: genel bakiye yükleme (top-up) — MatchId null, tutar kullanıcının seçtiği tutardır.</summary>
     public Task<PaymentInvoiceDto> CreateTopUpInvoiceAsync(
-        string playerId, decimal amountUsd, string payoutAddress, CancellationToken cancellationToken)
+        string playerId, decimal amountUsd, CancellationToken cancellationToken)
     {
         if (amountUsd < _config.MinDepositUsd)
         {
             throw new PaymentValidationException("BELOW_MIN_DEPOSIT", $"Minimum yatırma tutarı {_config.MinDepositUsd} USD.");
         }
 
-        return CreateInvoiceInternalAsync(matchId: null, playerId, playerName: null, amountUsd, payoutAddress, cancellationToken);
+        return CreateInvoiceInternalAsync(matchId: null, playerId, playerName: null, amountUsd, cancellationToken);
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ public class PaymentService
     /// client'tan gelen bir tutara asla güvenilmez (sunucu otoriter olmalı).
     /// </summary>
     public async Task<PaymentInvoiceDto> CreateMatchEntryInvoiceAsync(
-        string matchId, string playerId, string playerName, string payoutAddress, CancellationToken cancellationToken)
+        string matchId, string playerId, string playerName, CancellationToken cancellationToken)
     {
         if (!_matchManager.TryGetMatch(matchId, out var match))
         {
@@ -93,17 +93,12 @@ public class PaymentService
             throw new PaymentValidationException("ALREADY_SUFFICIENT_BALANCE", "Bakiyeniz zaten giriş ücretine yetiyor, doğrudan katılabilirsiniz.");
         }
 
-        return await CreateInvoiceInternalAsync(matchId, playerId, playerName, shortfall, payoutAddress, cancellationToken);
+        return await CreateInvoiceInternalAsync(matchId, playerId, playerName, shortfall, cancellationToken);
     }
 
     private async Task<PaymentInvoiceDto> CreateInvoiceInternalAsync(
-        string? matchId, string playerId, string? playerName, decimal amountUsd, string payoutAddress, CancellationToken cancellationToken)
+        string? matchId, string playerId, string? playerName, decimal amountUsd, CancellationToken cancellationToken)
     {
-        if (!AddressValidator.TryValidate(payoutAddress, out var addressFormat))
-        {
-            throw new PaymentValidationException("INVALID_PAYOUT_ADDRESS", "Geçersiz LTC adresi (checksum doğrulaması başarısız).");
-        }
-
         if (matchId is not null)
         {
             // İdempotent oluşturma: aynı maç+oyuncu için zaten bekleyen/onaylanmış bir invoice varsa onu döndür.
@@ -124,7 +119,7 @@ public class PaymentService
             if (existing is not null)
             {
                 _logger.LogInformation("Mevcut invoice yeniden döndürülüyor: {InvoiceId}", existing.Id);
-                return ToDto(existing, null, null);
+                return ToDto(existing);
             }
         }
 
@@ -147,14 +142,14 @@ public class PaymentService
             MatchId = matchId,
             PlayerName = playerName,
             BtcPayInvoiceId = providerInvoice.BtcPayInvoiceId,
+            ReceivingAddress = providerInvoice.ReceivingAddress,
+            Bip21Uri = providerInvoice.Bip21Uri,
             AmountUsd = PaymentMath.RoundUsdForPersistence(amountUsd),
             AmountLtc = amountLtc,
             LockedUsdPerLtc = PaymentMath.RoundForPersistence(quote.UsdPerLtc),
             PriceOracleSource = quote.Source,
             RateServedFromCache = quote.RateServedFromCache,
             RateAgeSecondsAtUse = quote.RateAgeSecondsAtUse,
-            PayoutAddress = payoutAddress,
-            PayoutAddressFormat = addressFormat,
             Status = PaymentInvoiceStatus.Pending,
             MatchJoinOutcome = matchId is null ? MatchJoinOutcome.NotApplicable : MatchJoinOutcome.Pending,
             ExpiresAt = expiresAt,
@@ -176,21 +171,34 @@ public class PaymentService
             _logger.LogInformation(ex, "Invoice INSERT çakışması, mevcut kayıt kullanılacak: {BtcPayInvoiceId}", providerInvoice.BtcPayInvoiceId);
             var raced = await _db.PaymentInvoices.AsNoTracking()
                 .FirstAsync(i => i.BtcPayInvoiceId == providerInvoice.BtcPayInvoiceId, cancellationToken);
-            return ToDto(raced, providerInvoice.ReceivingAddress, providerInvoice.Bip21Uri);
+            return ToDto(raced);
         }
 
         _logger.LogInformation(
             "Invoice oluşturuldu: {InvoiceId} (BtcPay={BtcPayInvoiceId}), maç={MatchId}, oyuncu={PlayerId}, {AmountLtc} LTC",
             invoice.Id, invoice.BtcPayInvoiceId, matchId, playerId, amountLtc);
 
-        return ToDto(invoice, providerInvoice.ReceivingAddress, providerInvoice.Bip21Uri);
+        return ToDto(invoice);
     }
 
     public async Task<PaymentInvoiceDto> GetInvoiceAsync(Guid invoiceId, CancellationToken cancellationToken)
     {
         var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken)
             ?? throw new PaymentInvoiceNotFoundException(invoiceId.ToString());
-        return ToDto(invoice, null, null);
+        return ToDto(invoice);
+    }
+
+    /// <summary>
+    /// docs/05-payment.md Bölüm 0.3: yalnızca `PaymentsDevController.SimulatePaid`
+    /// tarafından kullanılır — gerçek BTCPay webhook payload'ını simüle etmek için
+    /// invoice'ın BTCPay tarafındaki kimliğini ve tutarını döner (docs/09-eksik-tarama-promptu.md
+    /// denetimi, Faz 8 — Controller'ın doğrudan PaymentDbContext sorgulaması Controller→
+    /// Service→Model kuralını ihlal ediyordu).
+    /// </summary>
+    public async Task<(string BtcPayInvoiceId, decimal AmountLtc)?> GetSimulationDetailsAsync(Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+        return invoice is null ? null : (invoice.BtcPayInvoiceId, invoice.AmountLtc);
     }
 
     /// <summary>docs/07-pages.md `/gecmis`: bir oyuncunun ödeme geçmişi, en yeniden eskiye.</summary>
@@ -202,7 +210,7 @@ public class PaymentService
 
         return invoices
             .OrderByDescending(i => i.CreatedAt)
-            .Select(i => ToDto(i, null, null))
+            .Select(i => ToDto(i))
             .ToList();
     }
 
@@ -213,7 +221,34 @@ public class PaymentService
             .Where(i => i.Status == PaymentInvoiceStatus.Failed || i.Status == PaymentInvoiceStatus.Expired)
             .ToListAsync(cancellationToken);
 
-        return invoices.OrderByDescending(i => i.CreatedAt).Select(i => ToDto(i, null, null)).ToList();
+        return invoices.OrderByDescending(i => i.CreatedAt).Select(i => ToDto(i)).ToList();
+    }
+
+    /// <summary>
+    /// docs/05-payment.md Bölüm 10.1 "Teknik arıza kaynaklı iade": admin, destek
+    /// talebi üzerine bir invoice için manuel iade tetikleyebilir. Yalnızca gerçekten
+    /// ödemesi alınmış (Confirmed) bir invoice iade edilebilir. `RefundService.
+    /// SubmitAndPersistAsync` hem refund kaydını ekler hem tutarı oyuncunun bakiyesine
+    /// kredi olarak işler hem de (Confirmed → Refunded ileri geçiş geçerliyse)
+    /// `invoice.Status`'ü `Refunded`'a taşır — tek bir yerden. Bu uç bir admin
+    /// butonu olduğundan çift tıklama/çift istek riski taşır; `SubmitAndPersistAsync`
+    /// bu yüzden krediyi yalnızca Refund satırı DB seviyesinde (unique constraint)
+    /// güvenle kalıcılaştıktan SONRA uygular — eşzamanlı ikinci bir çağrı asla
+    /// çift kredi oluşturmaz (bkz. o metodun kendi yorumu).
+    /// </summary>
+    public async Task SubmitManualRefundAsync(Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var invoice = await _db.PaymentInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken)
+            ?? throw new PaymentInvoiceNotFoundException(invoiceId.ToString());
+
+        if (invoice.Status != PaymentInvoiceStatus.Confirmed)
+        {
+            throw new PaymentValidationException(
+                "INVOICE_NOT_REFUNDABLE", "Yalnızca onaylanmış (ödemesi alınmış) bir invoice iade edilebilir.");
+        }
+
+        await _refundService.SubmitAndPersistAsync(invoice, invoice.AmountUsd, RefundReason.Manual, cancellationToken);
+        _logger.LogInformation("Admin manuel iade talebi oluşturuldu: {InvoiceId}", invoiceId);
     }
 
     /// <summary>docs/07-pages.md `/admin`: "günlük hacim" — bugün onaylanan invoice'ların toplam USD tutarı.</summary>
@@ -358,7 +393,7 @@ public class PaymentService
             // geri ekler ve RoomFull döner — sorgu seviyesinde tek entegrasyon
             // noktası (bkz. docs/01-workflow-rules.md 0.13 modüller arası izolasyon).
             var entryResult = await _roomEntryService.TryJoinAsync(
-                invoice.MatchId, invoice.PlayerId, invoice.PlayerName ?? "Oyuncu", invoice.PayoutAddress, now.UtcDateTime, cancellationToken);
+                invoice.MatchId, invoice.PlayerId, invoice.PlayerName ?? "Oyuncu", now.UtcDateTime, cancellationToken);
 
             invoice.MatchJoinOutcome = entryResult.Outcome switch
             {
@@ -389,9 +424,9 @@ public class PaymentService
     /// <summary>
     /// Bölüm 1.2: RefundOverpaymentThresholdUsd, invoice'ın kilitlediği
     /// LockedUsdPerLtc üzerinden LTC'ye çevrilerek karşılaştırılır. Eşiği aşan bir
-    /// fazla ödeme varsa fazlalık için Refund kaydı açılır (gönderim, çağıranın
-    /// SaveChanges'ı ile birlikte aynı transaction'da kalıcılaşır; asıl gönderim
-    /// RefundService.ProcessDueRefundsAsync tarafından ayrıca yapılır).
+    /// fazla ödeme varsa fazlalık aynı kilitli kurla USD'ye çevrilip oyuncunun
+    /// bakiyesine kredi olarak işlenir (RefundService.SubmitAsync, çağıranın
+    /// SaveChanges'ı ile birlikte aynı transaction'da kalıcılaşır).
     /// </summary>
     private async Task ApplyToleranceAndOverpaymentAsync(PaymentInvoice invoice, BtcPayWebhookPayload payload, CancellationToken cancellationToken)
     {
@@ -415,8 +450,8 @@ public class PaymentService
             return;
         }
 
-        var refundAmountLtc = PaymentMath.RoundForPersistence(overpaymentLtc);
-        await _refundService.SubmitAsync(invoice, refundAmountLtc, RefundReason.Overpayment, cancellationToken);
+        var refundAmountUsd = PaymentMath.RoundUsdForPersistence(overpaymentLtc * invoice.LockedUsdPerLtc);
+        await _refundService.SubmitAsync(invoice, refundAmountUsd, RefundReason.Overpayment, cancellationToken);
     }
 
     private static PaymentInvoiceStatus? MapEventTypeToStatus(string eventType) => eventType switch
@@ -427,7 +462,7 @@ public class PaymentService
         _ => null
     };
 
-    private PaymentInvoiceDto ToDto(PaymentInvoice invoice, string? receivingAddress, string? bip21Uri) => new()
+    private PaymentInvoiceDto ToDto(PaymentInvoice invoice) => new()
     {
         InvoiceId = invoice.Id.ToString(),
         MatchId = invoice.MatchId,
@@ -436,8 +471,8 @@ public class PaymentService
         AmountUsd = invoice.AmountUsd.ToString("0.00", CultureInfo.InvariantCulture),
         AmountLtc = invoice.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture),
         LockedUsdPerLtc = invoice.LockedUsdPerLtc.ToString("0.00000000", CultureInfo.InvariantCulture),
-        ReceivingAddress = receivingAddress ?? string.Empty,
-        Bip21Uri = bip21Uri ?? string.Empty,
+        ReceivingAddress = invoice.ReceivingAddress,
+        Bip21Uri = invoice.Bip21Uri,
         ExpiresAt = invoice.ExpiresAt.ToString("O", CultureInfo.InvariantCulture),
         CreatedAt = invoice.CreatedAt.ToString("O", CultureInfo.InvariantCulture),
         RateServedFromCache = invoice.RateServedFromCache,

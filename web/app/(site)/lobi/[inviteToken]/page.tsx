@@ -2,11 +2,13 @@
 
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PayoutAddressPrompt } from "@/components/lobby/PayoutAddressPrompt";
+import { CardContent } from "@/components/ui/card";
+import { GameCard } from "@/components/layout/GameCard";
 import {
   getRoomByInviteToken,
   joinRoom,
@@ -14,7 +16,8 @@ import {
   type JoinRoomResult,
   type RoomSummary,
 } from "@/lib/game/api";
-import { getStoredDisplayName, getStoredPayoutAddress, isSignedIn, setStoredPayoutAddress } from "@/lib/identity";
+import { getStoredDisplayName } from "@/lib/identity";
+import { AuthGuard } from "@/components/layout/AuthGuard";
 
 interface InviteLobbyPageProps {
   params: Promise<{ inviteToken: string }>;
@@ -28,28 +31,29 @@ function storeSession(matchId: string, playerId: string, playerName: string) {
 /**
  * docs/07-pages.md `/lobi/[inviteToken]`: şifreli/özel VIP odaya kısayol linki.
  * Link tek başına yeterli değildir — oda şifreliyse parola da istenir (bkz.
- * docs/03-game-rules.md Bölüm 2.2 "DÜZELTME"). docs/05-payment.md Bölüm 1.9:
- * bir LTC ödül adresi de gereklidir.
+ * docs/03-game-rules.md Bölüm 2.2 "DÜZELTME"). docs/05-payment.md Bölüm 1.9
+ * (2026-08-08): katılım hiçbir LTC adresi istemez.
  */
-export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
+export default function InviteLobbyPage(props: InviteLobbyPageProps) {
+  return (
+    <AuthGuard>
+      <InviteLobbyPageContent {...props} />
+    </AuthGuard>
+  );
+}
+
+function InviteLobbyPageContent({ params }: InviteLobbyPageProps) {
   const { inviteToken } = use(params);
   const router = useRouter();
   const [playerName, setPlayerName] = useState<string | null>(null);
-  const [payoutAddress, setPayoutAddress] = useState("");
   const [room, setRoom] = useState<RoomSummary | null | undefined>(undefined);
   const [password, setPassword] = useState("");
   const [passwordOk, setPasswordOk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingAddressPrompt, setPendingAddressPrompt] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    if (!isSignedIn()) {
-      router.replace("/giris");
-      return;
-    }
     setPlayerName(getStoredDisplayName());
-    setPayoutAddress(getStoredPayoutAddress() ?? "");
 
     getRoomByInviteToken(inviteToken)
       .then((dto) => {
@@ -57,7 +61,7 @@ export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
         setPasswordOk(!dto.isPasswordProtected);
       })
       .catch(() => setRoom(null));
-  }, [inviteToken, router]);
+  }, [inviteToken]);
 
   function handleResult(result: JoinRoomResult) {
     setBusy(false);
@@ -67,9 +71,6 @@ export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
     }
 
     if (result.outcome === "Joined" && result.playerId && playerName) {
-      if (payoutAddress.trim()) {
-        setStoredPayoutAddress(payoutAddress.trim());
-      }
       storeSession(result.matchId, result.playerId, playerName);
       router.push(`/game/${result.matchId}`);
       return;
@@ -83,15 +84,7 @@ export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
         router.push(`/odeme/${result.invoice.invoiceId}`);
         return;
       }
-      setPendingAddressPrompt(result.shortfallUsd ?? "0.00");
-      return;
-    }
-
-    if (result.outcome === "PayoutAddressRequired" || result.outcome === "InvalidPayoutAddress") {
-      setPendingAddressPrompt(null);
-      if (result.outcome === "InvalidPayoutAddress") {
-        setError("Girdiğiniz LTC adresi geçersiz.");
-      }
+      setError("Ödeme oluşturulamadı, lütfen tekrar deneyin.");
       return;
     }
 
@@ -120,20 +113,7 @@ export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
     setBusy(true);
     setError(null);
     try {
-      handleResult(await joinRoom(room.matchId, playerName, payoutAddress.trim() || undefined));
-    } catch (err) {
-      setError(String(err));
-      setBusy(false);
-    }
-  }
-
-  async function handlePayoutAddressSubmit(address: string) {
-    if (!room || !playerName) return;
-    setBusy(true);
-    setError(null);
-    try {
-      handleResult(await joinRoom(room.matchId, playerName, address));
-      setPendingAddressPrompt(undefined);
+      handleResult(await joinRoom(room.matchId, playerName));
     } catch (err) {
       setError(String(err));
       setBusy(false);
@@ -156,67 +136,49 @@ export default function InviteLobbyPage({ params }: InviteLobbyPageProps) {
     );
   }
 
-  if (pendingAddressPrompt !== undefined) {
-    return (
-      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4 py-16">
-        <PayoutAddressPrompt
-          shortfallUsd={pendingAddressPrompt}
-          busy={busy}
-          submitLabel={pendingAddressPrompt ? "Ödeme Ekranına Geç" : "Devam Et"}
-          onSubmit={handlePayoutAddressSubmit}
-          onCancel={() => setPendingAddressPrompt(undefined)}
-        />
-        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 px-4 py-16">
-      <div>
-        <h1 className="text-lg font-semibold">Özel Davet</h1>
-        {/* docs/08-page-content.md Bölüm 3.6: parola girilmeden oda detayları (oyuncu sayısı, giriş ücreti) gösterilmez. */}
-        {passwordOk ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            {room.playerCount}/{room.maxPlayers} oyuncu · <Badge variant="outline">${room.entryFeeUsd} giriş ücreti</Badge>
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">Devam etmek için oda parolasını girin.</p>
-        )}
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-16">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span className="flex size-12 items-center justify-center rounded-2xl" style={{ backgroundColor: "#F5B94222", color: "#F5B942" }}>
+          <Lock className="size-6" aria-hidden="true" />
+        </span>
+        <div>
+          <h1 className="text-lg font-semibold">Özel Davet</h1>
+          {/* docs/08-page-content.md Bölüm 3.6: parola girilmeden oda detayları (oyuncu sayısı, giriş ücreti) gösterilmez. */}
+          {passwordOk ? (
+            <p className="flex items-center gap-3 text-sm text-muted-foreground">
+              {room.playerCount}/{room.maxPlayers} oyuncu · <Badge variant="outline">${room.entryFeeUsd} giriş ücreti</Badge>
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Devam etmek için oda parolasını girin.</p>
+          )}
+        </div>
       </div>
 
-      {!passwordOk ? (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="roomPassword">Oda parolası</Label>
-          <Input
-            id="roomPassword"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Button disabled={busy || !password} onClick={handleVerifyPassword}>
-            Doğrula
-          </Button>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="payoutAddress">LTC ödül adresiniz</Label>
-            <Input
-              id="payoutAddress"
-              className="font-mono"
-              value={payoutAddress}
-              onChange={(e) => setPayoutAddress(e.target.value)}
-              placeholder="ltc1q... veya L..."
-            />
-          </div>
-          <Button disabled={busy} onClick={handleJoin}>
-            Odaya Katıl
-          </Button>
-        </>
-      )}
+      <GameCard>
+        <CardContent className="flex flex-col gap-4">
+          {!passwordOk ? (
+            <div className="flex flex-col gap-3">
+              <Label htmlFor="roomPassword">Oda parolası</Label>
+              <Input
+                id="roomPassword"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <Button disabled={busy || !password} onClick={handleVerifyPassword}>
+                Doğrula
+              </Button>
+            </div>
+          ) : (
+            <Button disabled={busy} onClick={handleJoin}>
+              Odaya Katıl
+            </Button>
+          )}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </CardContent>
+      </GameCard>
     </div>
   );
 }

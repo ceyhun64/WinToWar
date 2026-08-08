@@ -2,9 +2,13 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { ScrollText, Activity, Clock, Trophy, Coins } from "lucide-react";
 import { GameMap } from "@/components/game/GameMap";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHero } from "@/components/layout/PageHero";
+import { StatCard } from "@/components/layout/StatCard";
+import { SectionTitle } from "@/components/layout/SectionTitle";
+import { GameCard } from "@/components/layout/GameCard";
 import { getMap, getMatchSnapshot } from "@/lib/game/api";
 import type { MapDto, MatchStateDto } from "@/lib/game/types";
 import { getPayoutSummary } from "@/lib/payments/api";
@@ -20,20 +24,6 @@ const MATCH_STATUS_LABEL: Record<string, string> = {
   Playing: "Devam Ediyor",
   Completed: "Tamamlandı",
   Cancelled: "İptal Edildi",
-};
-
-const PAYOUT_STATUS_LABEL: Record<string, string> = {
-  PayoutPending: "Bekliyor",
-  PayoutSent: "Gönderildi",
-  Completed: "Tamamlandı",
-  Failed: "Başarısız",
-};
-
-const PAYOUT_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  PayoutPending: "outline",
-  PayoutSent: "secondary",
-  Completed: "default",
-  Failed: "destructive",
 };
 
 function formatDuration(startedAtUtc: string | null, completedAtUtc: string | null): string {
@@ -67,6 +57,9 @@ export default function MacPage({ params }: MacPageProps) {
   if (match === null) {
     return (
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-3 px-4 py-16 text-center">
+        <span className="flex size-12 items-center justify-center rounded-2xl" style={{ backgroundColor: "#94A3B822", color: "#94A3B8" }}>
+          <ScrollText className="size-6" aria-hidden="true" />
+        </span>
         <h1 className="text-lg font-semibold">Maç bulunamadı</h1>
         <Link href="/gecmis" className="text-sm underline">
           Geçmişe dön
@@ -80,28 +73,15 @@ export default function MacPage({ params }: MacPageProps) {
     .join(", ");
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 px-4 py-6">
-      <h1 className="text-lg font-semibold">Maç Özeti</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
+      <PageHero icon={ScrollText} title="Maç Özeti" />
 
-      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-        <Card size="sm">
-          <CardContent>
-            <span className="text-xs text-muted-foreground">Durum</span>
-            <p className="font-medium">{MATCH_STATUS_LABEL[match.status] ?? match.status}</p>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardContent>
-            <span className="text-xs text-muted-foreground">Süre</span>
-            <p className="font-medium tabular-nums">{formatDuration(match.startedAtUtc, match.completedAtUtc)}</p>
-          </CardContent>
-        </Card>
-        <Card size="sm" className="sm:col-span-2">
-          <CardContent>
-            <span className="text-xs text-muted-foreground">Kazanan</span>
-            <p className="font-medium">{winnerNames || "—"}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard icon={Activity} label="Durum" value={MATCH_STATUS_LABEL[match.status] ?? match.status} />
+        <StatCard icon={Clock} label="Süre" value={formatDuration(match.startedAtUtc, match.completedAtUtc)} />
+        <div className="col-span-2">
+          <StatCard icon={Trophy} label="Kazanan" value={winnerNames || "—"} accent="#F5B942" />
+        </div>
       </div>
 
       <GameMap
@@ -109,33 +89,37 @@ export default function MacPage({ params }: MacPageProps) {
         state={match}
         myPlayerId=""
         selectedRegionId={null}
+        // Biten bir maçın anlık görüntüsünde state.armies zaten boştur (bkz.
+        // 07-pages.md Non-Goals — hamle hamle replay yok), bu değer hiç kullanılmaz.
+        movementDurationSeconds={1}
         onSelectRegion={() => {}}
         onAttack={() => {}}
       />
 
       {payout ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Ödül Dağıtımı</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2 text-sm">
-              {payout.recipients.map((r) => (
-                <li key={r.winnerPlayerId} className="flex items-center justify-between">
-                  <span className="text-muted-foreground">
-                    {match.players.find((p) => p.id === r.winnerPlayerId)?.name ?? r.winnerPlayerId}
-                  </span>
-                  <span className="flex items-center gap-1.5 tabular-nums">
-                    {r.amountLtc} LTC
-                    <Badge variant={PAYOUT_STATUS_VARIANT[r.status] ?? "outline"}>
-                      {PAYOUT_STATUS_LABEL[r.status] ?? r.status}
-                    </Badge>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        <section className="flex flex-col gap-3">
+          <SectionTitle>Ödül Dağıtımı</SectionTitle>
+          <GameCard>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Coins className="size-4" style={{ color: "#F5B942" }} aria-hidden="true" />
+                Kazananlara Dağıtım
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="flex flex-col gap-3 text-sm">
+                {payout.recipients.map((r) => (
+                  <li key={r.winnerPlayerId} className="flex items-center justify-between">
+                    <span className="text-muted-foreground">
+                      {match.players.find((p) => p.id === r.winnerPlayerId)?.name ?? r.winnerPlayerId}
+                    </span>
+                    <span className="tabular-nums">${r.amountUsd} bakiyeye eklendi</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </GameCard>
+        </section>
       ) : null}
 
       <Link href={`/destek?matchId=${matchId}`} className="text-sm text-muted-foreground underline">

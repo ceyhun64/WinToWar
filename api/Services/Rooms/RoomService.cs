@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using api.Models;
 using api.Models.Rooms;
+using api.Models.Rooms.Dtos;
 using api.Services;
+using Microsoft.Extensions.Options;
 
 namespace api.Services.Rooms;
 
@@ -18,25 +20,32 @@ public class RoomService
 
     private readonly MatchManager _matchManager;
     private readonly ILogger<RoomService> _logger;
+    private readonly PaymentConfig _paymentConfig;
 
     /// <summary>Practice tek paylaşılan kuyruk — kurucusu yoktur (Bölüm 7).</summary>
     private const string PracticeCreatorPlaceholder = "practice-queue";
 
-    public RoomService(MatchManager matchManager, ILogger<RoomService> logger)
+    public RoomService(MatchManager matchManager, ILogger<RoomService> logger, IOptions<PaymentConfig> paymentConfig)
     {
         _matchManager = matchManager;
         _logger = logger;
+        _paymentConfig = paymentConfig.Value;
     }
 
     /// <summary>Dolmamış açık bir Standart maç varsa onu döndürür, yoksa yeni bir tanesini oluşturur. Rezervasyon yapmaz.</summary>
     public Match FindOrCreateStandardMatch(DateTime now)
         => _matchManager.FindJoinableRoom(RoomType.Standard) ?? CreateStandardMatch(now);
 
-    /// <summary>Practice: tek paylaşılan otomatik eşleşme kuyruğu (Bölüm 7 — oda listesi değil).</summary>
-    public (Match match, Player player) JoinPracticeQueue(string playerName, DateTime now)
+    /// <summary>
+    /// Practice: tek paylaşılan otomatik eşleşme kuyruğu (Bölüm 7 — oda listesi değil).
+    /// docs/11-auth.md Bölüm 0.4/3.5: forcedPlayerId olarak JWT'den gelen playerId
+    /// zorunludur — aksi halde GameHub, Context.UserIdentifier (hesap id'si) ile
+    /// bu match-katılımcısının rastgele üretilmiş id'sini eşleştiremez.
+    /// </summary>
+    public (Match match, Player player) JoinPracticeQueue(string playerId, string playerName, DateTime now)
     {
         var match = _matchManager.FindJoinableRoom(RoomType.Practice) ?? CreatePracticeMatch(now);
-        var player = _matchManager.ReservePlayer(match, playerName);
+        var player = _matchManager.ReservePlayer(match, playerName, now, forcedPlayerId: playerId);
         // Practice'te ödeme akışı hiç tetiklenmez (docs/05-payment.md Bölüm 1.8).
         _matchManager.ConfirmPlayerPayment(match.Id, player.Id, now);
         return (match, player);
@@ -79,9 +88,22 @@ public class RoomService
             throw new InvalidOperationException("Giriş ücreti negatif olamaz.");
         }
 
+        // 🔔🛠️❓ docs/07-pages.md ❓ notu: üst sınır müşteriden netleşene kadar
+        // geçici bir değerle korunur — bkz. PaymentConfig.MaxVipEntryFeeUsd gerekçesi.
+        if (entryFeeUsd > _paymentConfig.MaxVipEntryFeeUsd)
+        {
+            throw new InvalidOperationException(
+                $"Giriş ücreti en fazla {_paymentConfig.MaxVipEntryFeeUsd} USD olabilir.");
+        }
+
         var room = new Room
         {
             Id = Guid.NewGuid().ToString("N"),
+            // 🛠️ docs/03-game-rules.md Bölüm 7 "VIP-tarzı özel Practice odası": Type
+            // kasıtlı olarak Vip kalır (aksi halde /lobi VIP sekmesindeki listede hiç
+            // görünmez, davet linki/parola mekanizması değişmeden çalışmaya devam
+            // etmeli) — EntryFeeUsd=0 olduğunda Practice davranışı Room.IsPractice
+            // üzerinden ayrıca sağlanır (bkz. Room.cs).
             Type = RoomType.Vip,
             MaxPlayers = maxPlayers,
             GreyRegionDefenseCount = greyRegionDefenseCount,
@@ -93,7 +115,7 @@ public class RoomService
         };
 
         var match = _matchManager.CreateMatch(room, now);
-        var creator = _matchManager.ReservePlayer(match, creatorName, forcedPlayerId: creatorPlayerId, joinIpAddress: creatorIpAddress);
+        var creator = _matchManager.ReservePlayer(match, creatorName, now, forcedPlayerId: creatorPlayerId, joinIpAddress: creatorIpAddress);
         return (match, creator);
     }
 
@@ -123,6 +145,28 @@ public class RoomService
 
     public Match? FindByInviteToken(string inviteToken)
         => _matchManager.ActiveMatches.FirstOrDefault(m => m.Room.InviteToken == inviteToken);
+
+    /// <summary>
+    /// docs/02-architecture.md "Mapping tek yerde yapılır": RoomsController bu
+    /// dönüşümü önceden kendi içinde yapıyordu (docs/09-eksik-tarama-promptu.md
+    /// denetimi, Faz 8'de düzeltildi) — oyun motorundaki MatchStateMapper deseniyle
+    /// tutarlı olarak Service katmanına taşındı. docs/08-page-content.md Bölüm 3.4:
+    /// liste ve davet-token uçlarının ikisi de aynı oda kimliği türetme mantığını
+    /// (RoomDisplayNameFormatter) kullanır.
+    /// </summary>
+    public RoomSummaryResponse ToRoomSummaryResponse(Match match)
+    {
+        var creatorName = match.Players.FirstOrDefault(p => p.Id == match.Room.CreatorPlayerId)?.Name;
+        return new RoomSummaryResponse(
+            match.Id,
+            RoomDisplayNameFormatter.Format(match.Room.Type, creatorName),
+            match.Players.Count,
+            match.Room.MaxPlayers,
+            match.Room.EntryFeeUsd.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            match.Room.FogOfWar,
+            match.Room.GreyRegionDefenseCount,
+            match.Room.IsPasswordProtected);
+    }
 
     public bool VerifyPassword(Room room, string password)
     {

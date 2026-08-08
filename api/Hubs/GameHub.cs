@@ -3,6 +3,7 @@ using api.Models.Dtos;
 using api.Services;
 using api.Services.GameEngine;
 using api.Services.Payments;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace api.Hubs;
@@ -15,7 +16,13 @@ namespace api.Hubs;
 ///
 /// Asker üretimi tamamen otomatik/pasif olduğundan burada bir "asker üret" aksiyonu
 /// YOKTUR; General/Upgrade kavramları WinToWar'da yoktur (bkz. docs/03-game-rules.md).
+///
+/// docs/11-auth.md Bölüm 0.4/3.5: [Authorize] + JWT Bearer, access_token query
+/// param'ı ile taşınır (SignalR handshake, bkz. Program.cs). Context.UserIdentifier
+/// (JWT sub claim, ClaimTypes.NameIdentifier) tüm hub metotlarında tek PlayerId
+/// kaynağıdır — client'tan playerId parametresi olarak asla alınmaz.
 /// </summary>
+[Authorize]
 public class GameHub : Hub
 {
     private readonly MatchManager _matchManager;
@@ -38,7 +45,7 @@ public class GameHub : Hub
         _logger = logger;
     }
 
-    public async Task JoinMatch(string matchId, string playerId)
+    public async Task JoinMatch(string matchId)
     {
         if (!_matchManager.TryGetMatch(matchId, out var match))
         {
@@ -46,6 +53,7 @@ public class GameHub : Hub
             return;
         }
 
+        var playerId = Context.UserIdentifier!;
         try
         {
             _matchManager.ReconnectPlayer(match, playerId, Context.ConnectionId);

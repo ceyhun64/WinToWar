@@ -10,6 +10,8 @@ interface GameMapProps {
   state: MatchStateDto;
   myPlayerId: string;
   selectedRegionId: string | null;
+  /** docs/04-style.md Bölüm 9 "Hareket animasyonu": ordu ilerlemesini oranlamak için — bkz. ArmyProgressLine. */
+  movementDurationSeconds: number;
   onSelectRegion: (regionId: string) => void;
   onAttack: (fromRegionId: string, toRegionId: string) => void;
 }
@@ -23,7 +25,15 @@ const REGION_HIT_RADIUS = 26;
 // bölge sürüklenemez.
 const MIN_GARRISON_PER_SEND = 1;
 
-export function GameMap({ map, state, myPlayerId, selectedRegionId, onSelectRegion, onAttack }: GameMapProps) {
+export function GameMap({
+  map,
+  state,
+  myPlayerId,
+  selectedRegionId,
+  movementDurationSeconds,
+  onSelectRegion,
+  onAttack,
+}: GameMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragFromRegionId, setDragFromRegionId] = useState<string | null>(null);
   const [dragPointerSvg, setDragPointerSvg] = useState<{ x: number; y: number } | null>(null);
@@ -153,6 +163,30 @@ export function GameMap({ map, state, myPlayerId, selectedRegionId, onSelectRegi
             strokeWidth={2}
           />
         ))}
+      </g>
+      {/* docs/04-style.md Bölüm 9: hareket, canlı animasyonlu bir ikon/nokta yerine
+          yalnızca bir ilerleme göstergesiyle temsil edilir — her SignalR güncellemesinde
+          yeniden çizilen statik bir çizgi, sürekli animasyon değil. */}
+      <g>
+        {state.armies.map((army) => {
+          const from = regionById.get(army.fromRegionId);
+          const to = regionById.get(army.toRegionId);
+          if (!from || !to) return null;
+          const progress = Math.min(
+            1,
+            Math.max(0, 1 - army.arrivesInSeconds / Math.max(1, movementDurationSeconds))
+          );
+          const midX = from.x + (to.x - from.x) * progress;
+          const midY = from.y + (to.y - from.y) * progress;
+          const color = colorForSlot(slotByPlayerId.get(army.ownerId) ?? 0);
+          return (
+            <g key={army.id}>
+              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={color} strokeWidth={2} strokeOpacity={0.25} />
+              <line x1={from.x} y1={from.y} x2={midX} y2={midY} stroke={color} strokeWidth={3} />
+              <circle cx={midX} cy={midY} r={5} fill={color} stroke="#111827" strokeWidth={1} />
+            </g>
+          );
+        })}
       </g>
       {dragFromRegion && dragPointerSvg ? (
         <line

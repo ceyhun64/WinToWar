@@ -4,6 +4,7 @@ using api.Models;
 using api.Models.Rooms;
 using api.Services;
 using api.Services.GameEngine;
+using api.Services.Matchmaking;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace api.Tests;
@@ -19,8 +20,9 @@ public class EconomyTickServiceTests
         var matchManager = new MatchManager(mapProvider, eventLogWriter, NullLogger<MatchManager>.Instance);
         var combatService = new CombatService(eventLogWriter, NullLogger<CombatService>.Instance);
         var movementService = new MovementService(mapProvider, combatService, NullLogger<MovementService>.Instance);
+        var botMatchService = new BotMatchService(matchManager, mapProvider, movementService, NullLogger<BotMatchService>.Instance);
         _sut = new EconomyTickService(
-            matchManager, movementService, eventLogWriter,
+            matchManager, movementService, botMatchService, eventLogWriter,
             hubContext: null!, scopeFactory: null!, NullLogger<EconomyTickService>.Instance);
     }
 

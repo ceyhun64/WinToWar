@@ -1,20 +1,13 @@
 namespace api.Models.Payments;
 
 /// <summary>
-/// Bölüm 5.4 monotonluk kuralını somutlaştırır: her state machine için sabit,
-/// artan bir <c>StatusRank</c> sıralaması. Terminal state'ler (Expired/Refunded/
-/// Failed için invoice; Completed için payout/refund) en yüksek rank'e sahiptir
-/// ki ulaşıldıktan sonra hiçbir geçiş kabul edilmesin.
-///
-/// 🛠️ Kapsam netleştirmesi: bu guard, dıştan (BTCPay webhook'u) sırasız gelen
-/// event'lere karşı <see cref="PaymentInvoiceStatus"/> için uygulanır (Bölüm 3.1,
-/// 5.4, 9. Test senaryoları — hepsi invoice/webhook bağlamında). Payout/Refund
-/// state geçişleri ise webhook'tan değil, PayoutService/RefundService'in kendi
-/// retry döngüsünden (dahili, otoriter kontrol akışı) kaynaklanır; retry akışında
-/// Failed → PayoutPending/PayoutSent gibi "geriye" görünen ama aslında yeni bir
-/// deneme başlatan geçişler kasıtlıdır ve StatusRank guard'ına tabi değildir.
-/// Buna karşın reconciliation'ın PayoutSent → Completed geçişi zaten kendi
-/// doğal guard'ıyla (yalnızca PayoutSent'ten Completed'a) korunur.
+/// Bölüm 5.4 monotonluk kuralını somutlaştırır: <see cref="PaymentInvoiceStatus"/>
+/// için sabit, artan bir <c>StatusRank</c> sıralaması. Terminal state'ler
+/// (Expired/Refunded/Failed) en yüksek rank'e sahiptir ki ulaşıldıktan sonra
+/// hiçbir geçiş kabul edilmesin. Bu guard, dıştan (BTCPay webhook'u) sırasız
+/// gelen event'lere karşı uygulanır (Bölüm 3.1, 5.4) — Payout/Refund artık
+/// senkron birer Wallet.BalanceUsd kredisi olduğundan (2026-08-08 kararı) kendi
+/// ayrı bir state machine'e sahip değildir, bu guard'a ihtiyaç duymaz.
 /// </summary>
 public static class StatusRankPolicy
 {
@@ -45,24 +38,4 @@ public static class StatusRankPolicy
     /// </summary>
     public static bool IsForwardTransition(PaymentInvoiceStatus current, PaymentInvoiceStatus incoming) =>
         GetRank(incoming) > GetRank(current);
-
-    private static readonly Dictionary<PayoutStatus, int> PayoutRanks = new()
-    {
-        [PayoutStatus.PayoutPending] = 0,
-        [PayoutStatus.PayoutSent] = 1,
-        [PayoutStatus.Completed] = 2,
-        [PayoutStatus.Failed] = -1 // Terminal değil; retry ile geri dönebilir, guard dışı.
-    };
-
-    public static int GetRank(PayoutStatus status) => PayoutRanks[status];
-
-    private static readonly Dictionary<RefundStatus, int> RefundRanks = new()
-    {
-        [RefundStatus.RefundPending] = 0,
-        [RefundStatus.RefundSent] = 1,
-        [RefundStatus.Completed] = 2,
-        [RefundStatus.Failed] = -1 // Terminal değil; retry ile geri dönebilir, guard dışı.
-    };
-
-    public static int GetRank(RefundStatus status) => RefundRanks[status];
 }

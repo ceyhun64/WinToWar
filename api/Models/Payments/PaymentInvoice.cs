@@ -25,6 +25,15 @@ public class PaymentInvoice
     /// <summary>İdempotency anahtarı — BTCPay tarafındaki invoice id'si.</summary>
     public required string BtcPayInvoiceId { get; set; }
 
+    /// <summary>
+    /// Provider'ın (BTCPay/Fake) ödeme oluştururken döndürdüğü alım adresi/BIP-21
+    /// URI'si — invoice oluşturulduğu anda kalıcılaştırılır ki her GET/polling
+    /// isteğinde (ör. `/odeme/[invoiceId]`) tekrar tekrar provider'a sormaya
+    /// gerek kalmasın ve adres asla boş dönmesin.
+    /// </summary>
+    public required string ReceivingAddress { get; set; }
+    public required string Bip21Uri { get; set; }
+
     public decimal AmountUsd { get; set; }
 
     /// <summary>Kalıcılaştırma anında PaymentMath.RoundForPersistence ile yuvarlanmış nihai değer.</summary>
@@ -35,9 +44,6 @@ public class PaymentInvoice
     public PriceOracleSource PriceOracleSource { get; set; }
     public bool RateServedFromCache { get; set; }
     public int RateAgeSecondsAtUse { get; set; }
-
-    public required string PayoutAddress { get; set; }
-    public PayoutAddressFormat PayoutAddressFormat { get; set; }
 
     public PaymentInvoiceStatus Status { get; set; } = PaymentInvoiceStatus.Pending;
 

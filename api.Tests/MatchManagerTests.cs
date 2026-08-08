@@ -32,7 +32,7 @@ public class MatchManagerTests
     public void RemovePlayerFromLobby_MatchStillInLobby_RemovesPlayerAndReturnsTrue()
     {
         var match = _sut.CreateMatch(CreateRoom(), DateTime.UtcNow);
-        var player = _sut.ReservePlayer(match, "Alice");
+        var player = _sut.ReservePlayer(match, "Alice", DateTime.UtcNow);
 
         var removed = _sut.RemovePlayerFromLobby(match, player.Id);
 
@@ -44,7 +44,7 @@ public class MatchManagerTests
     public void RemovePlayerFromLobby_MatchInCountdown_ReturnsFalseAndDoesNotRemove()
     {
         var match = _sut.CreateMatch(CreateRoom(), DateTime.UtcNow);
-        var player = _sut.ReservePlayer(match, "Alice");
+        var player = _sut.ReservePlayer(match, "Alice", DateTime.UtcNow);
         match.Status = MatchStatus.Countdown;
 
         var removed = _sut.RemovePlayerFromLobby(match, player.Id);
@@ -57,7 +57,7 @@ public class MatchManagerTests
     public void RemovePlayerFromLobby_MatchPlaying_ReturnsFalseAndDoesNotRemove()
     {
         var match = _sut.CreateMatch(CreateRoom(), DateTime.UtcNow);
-        var player = _sut.ReservePlayer(match, "Alice");
+        var player = _sut.ReservePlayer(match, "Alice", DateTime.UtcNow);
         match.Status = MatchStatus.Playing;
 
         var removed = _sut.RemovePlayerFromLobby(match, player.Id);
@@ -70,7 +70,7 @@ public class MatchManagerTests
     public void RemovePlayerFromLobby_LastPlayerLeaves_CancelsLobby()
     {
         var match = _sut.CreateMatch(CreateRoom(), DateTime.UtcNow);
-        var player = _sut.ReservePlayer(match, "Alice");
+        var player = _sut.ReservePlayer(match, "Alice", DateTime.UtcNow);
 
         _sut.RemovePlayerFromLobby(match, player.Id);
 
@@ -81,8 +81,8 @@ public class MatchManagerTests
     public void RemovePlayerFromLobby_OtherPlayersRemain_LobbyStaysOpen()
     {
         var match = _sut.CreateMatch(CreateRoom(maxPlayers: 3), DateTime.UtcNow);
-        var alice = _sut.ReservePlayer(match, "Alice");
-        _sut.ReservePlayer(match, "Bob");
+        var alice = _sut.ReservePlayer(match, "Alice", DateTime.UtcNow);
+        _sut.ReservePlayer(match, "Bob", DateTime.UtcNow);
 
         _sut.RemovePlayerFromLobby(match, alice.Id);
 

@@ -23,6 +23,17 @@ public class PaymentConfig
     public decimal MinDepositUsd { get; set; } = 1.00m;
     public decimal MinWithdrawalUsd { get; set; } = 1.00m;
 
+    // 🔔🛠️❓ docs/07-pages.md "❓ Müşteriden Doğrulanması Gereken Noktalar":
+    // "VIP oda giriş ücretinin alt/üst sınırı var mı... belirtilmedi." Alt sınır
+    // zaten 0'dır (RoomService negatif değeri reddeder); üst sınır hiç yoktu —
+    // kurucu teorik olarak $1.000.000 gibi bir değer girip anlamsız/kazara bir
+    // oda oluşturabiliyordu. Geçici, tutucu varsayım: Standart oda giriş ücretinin
+    // (GameConfig.StandardRoomEntryFeeUsd = $1) 500 katı — gerçek "high-roller"
+    // VIP kullanımını engellemeyecek kadar geniş, ama kazara/anlamsız girişleri
+    // (ör. $10.000+) engelleyecek kadar dar. Bu değer ONAYLANANA KADAR GEÇİCİDİR,
+    // müşteriye raporlanmalı.
+    public decimal MaxVipEntryFeeUsd { get; set; } = 500.00m;
+
     // 🛠️ Bölüm 1.2 — stale-cache üç kademeli politika süreleri (öneri değerler).
     public int PriceCacheFreshSeconds { get; set; } = 30;
     public int PriceCacheStaleMaxSeconds { get; set; } = 300;
@@ -40,34 +51,6 @@ public class PaymentConfig
     // ise WebhookSignatureValidator içinde sabit kod olarak tutulur (Bölüm 2.4).
     public string WebhookSignatureHeader { get; set; } = "BTCPay-Sig";
     public int WebhookMaxAgeSeconds { get; set; } = 300;
-
-    // 🛠️ Bölüm 0.3 — retry+backoff+jitter parametreleri (payout).
-    public int PayoutRetryCount { get; set; } = 5;
-    public int PayoutRetryBaseDelaySeconds { get; set; } = 10;
-    public int PayoutRetryJitterSeconds { get; set; } = 5;
-
-    // 🛠️ Bölüm 0.3 — retry+backoff+jitter parametreleri (refund).
-    public int RefundRetryCount { get; set; } = 5;
-    public int RefundRetryBaseDelaySeconds { get; set; } = 10;
-    public int RefundRetryJitterSeconds { get; set; } = 5;
-
-    // 🛠️ Üstel geri çekilme (exponential backoff) tabanı — BaseDelaySeconds *
-    // RetryBackoffMultiplier^(RetryCount-1). Payout ve Refund aynı formülü,
-    // aynı tabanla paylaşır (bkz. 06-coding-standards.md "Magic Number Yasağı").
-    public double RetryBackoffMultiplier { get; set; } = 2.0;
-
-    // 🛠️ Reconciliation job — tarama aralığı, distributed lock timeout'u.
-    public int ReconciliationIntervalSeconds { get; set; } = 60;
-    public int ReconciliationLockTimeoutSeconds { get; set; } = 30;
-
-    // 🛠️ Şu an hiçbir kod yolu tarafından okunmuyor: bu alanın tek kullanıcısı
-    // olan ReconciliationService.ProcessMatchmakingTimeoutsAsync ("lobi zaman
-    // aşımı güvence ağı") 🔒 "otomatik iade yok" kuralını ihlal ettiği için
-    // kaldırıldı (bkz. ReconciliationService.cs). Alan, docs/05-payment.md Bölüm
-    // 2.4'teki PaymentConfig alan listesiyle tutarlılık için (ve ileride kurallara
-    // uygun bir reconciliation-tabanlı temizlik ihtiyacı doğarsa hazır olsun diye)
-    // burada bırakıldı.
-    public int ReconciliationScanWindowMinutes { get; set; } = 180;
 
     // 🛠️ Bölüm 2.6 — v7'de sadeleştirildi: network fee sorumluluğu havuzdan
     // düşülür (kazanana net gönderilen tutar zaten fee dahil hesaplanır). Bu alan

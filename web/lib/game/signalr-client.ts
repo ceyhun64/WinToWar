@@ -1,5 +1,6 @@
 import * as signalR from "@microsoft/signalr";
 import type { PaymentConfirmedEvent } from "@/lib/payments/types";
+import { ensureSessionLoaded, getAccessToken } from "@/lib/identity";
 import type { MatchStateDto } from "./types";
 
 const HUB_URL = process.env.NEXT_PUBLIC_API_HUB_URL ?? "http://localhost:5019/hub/game";
@@ -8,13 +9,24 @@ export type MatchStateHandler = (state: MatchStateDto) => void;
 export type ActionErrorHandler = (message: string) => void;
 export type PaymentConfirmedHandler = (event: PaymentConfirmedEvent) => void;
 
-/** SignalR bağlantı yönetimi: bağlan/yeniden bağlan/mesaj dinleme. */
+/**
+ * SignalR bağlantı yönetimi: bağlan/yeniden bağlan/mesaj dinleme.
+ * docs/11-auth.md Bölüm 1.4/3.5: [Authorize] + JWT Bearer, access_token query
+ * param'ı üzerinden taşınır (SignalR handshake header taşıyamaz). accessTokenFactory
+ * her (yeniden) bağlantı denemesinde çağrılır — süresi dolan bir token'la
+ * yeniden bağlanmadan önce sessiz refresh denenmiş olur.
+ */
 export class GameConnection {
   private connection: signalR.HubConnection;
 
   constructor() {
     this.connection = new signalR.HubConnectionBuilder()
-      .withUrl(HUB_URL)
+      .withUrl(HUB_URL, {
+        accessTokenFactory: async () => {
+          await ensureSessionLoaded();
+          return getAccessToken() ?? "";
+        },
+      })
       .withAutomaticReconnect()
       .configureLogging(signalR.LogLevel.Warning)
       .build();
@@ -42,6 +54,16 @@ export class GameConnection {
     this.connection.onreconnected(handler);
   }
 
+  /** docs/07-pages.md Sayfa Bazlı State Matrisi: bağlantı koptu, otomatik yeniden bağlanma deneniyor. */
+  onReconnecting(handler: () => void) {
+    this.connection.onreconnecting(handler);
+  }
+
+  /** withAutomaticReconnect'in yeniden bağlanma denemeleri tükendiğinde (veya ilk `start()` başarısız kalırsa) tetiklenir. */
+  onClose(handler: () => void) {
+    this.connection.onclose(handler);
+  }
+
   async start() {
     if (this.connection.state === signalR.HubConnectionState.Disconnected) {
       await this.connection.start();
@@ -52,9 +74,13 @@ export class GameConnection {
     await this.connection.stop();
   }
 
-  /** Maça (yeniden) bağlanır ve SignalR grubuna katılır; sunucu güncel MatchState'i yayınlar. */
-  async joinMatch(matchId: string, playerId: string) {
-    await this.connection.invoke("JoinMatch", matchId, playerId);
+  /**
+   * Maça (yeniden) bağlanır ve SignalR grubuna katılır; sunucu güncel MatchState'i
+   * yayınlar. playerId artık parametre olarak alınmaz — sunucu Context.UserIdentifier
+   * (JWT sub claim) üzerinden kendisi belirler (bkz. docs/11-auth.md Bölüm 0.4).
+   */
+  async joinMatch(matchId: string) {
+    await this.connection.invoke("JoinMatch", matchId);
   }
 
   async leaveLobby() {

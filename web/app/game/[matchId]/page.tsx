@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { GameMap } from "@/components/game/GameMap";
 import { Hud } from "@/components/game/Hud";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getGameConfig, getMap } from "@/lib/game/api";
@@ -82,6 +83,24 @@ export default function GamePage({ params }: GamePageProps) {
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 px-4 py-4">
       <Hud state={state} myPlayerId={playerId} gameConfig={gameConfig} />
 
+      {/* docs/08-page-content.md Bölüm 3.8: bağlantı durumu içeriği — sunucu-otoriter
+          mimaride bu bant/uyarı yalnızca istemcinin senkron olmadığını gösterir,
+          harita/HUD'u gizlemez, oyun kuralı/ikna metni içermez. */}
+      {store.connectionStatus === "reconnecting" ? (
+        <div className="rounded-2xl border border-border bg-muted/40 px-4 py-2 text-center text-sm text-muted-foreground">
+          Bağlantı kesildi, yeniden bağlanılıyor…
+        </div>
+      ) : null}
+
+      {store.connectionStatus === "disconnected" ? (
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-center text-sm">
+          <p>Maçınız sunucuda devam ediyor, bağlantınızı yeniden kurun.</p>
+          <Button size="sm" onClick={() => store.reconnect()}>
+            Yeniden Bağlan
+          </Button>
+        </div>
+      ) : null}
+
       {state.status === "Lobby" || state.status === "Countdown" ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 text-center text-sm text-muted-foreground">
@@ -90,12 +109,20 @@ export default function GamePage({ params }: GamePageProps) {
             ) : (
               <>
                 {/* docs/08-page-content.md Bölüm 1.4/3.4: "Ali / Mehmet · 3/4" gibi somut,
-                    dolan/boş slotları isimle gösteren bir liste — jenerik bir sayaç yerine. */}
-                <p className="text-foreground">
+                    dolan/boş slotları isimle gösteren bir liste — jenerik bir sayaç yerine.
+                    docs/03-game-rules.md Bölüm 7: bot olan koltuklar burada da (masa
+                    listesinde) açıkça "Bot" rozetiyle işaretlenir. */}
+                <p className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-foreground">
                   {Array.from({ length: state.room.maxPlayers }, (_, slot) => {
                     const occupant = state.players.find((p) => p.slot === slot);
-                    return occupant ? occupant.name : "Bekleniyor…";
-                  }).join(" · ")}
+                    return (
+                      <span key={slot} className="inline-flex items-center gap-1">
+                        {slot > 0 ? <span className="text-muted-foreground">·</span> : null}
+                        <span>{occupant ? occupant.name : "Bekleniyor…"}</span>
+                        {occupant?.isBot ? <Badge variant="secondary">Bot</Badge> : null}
+                      </span>
+                    );
+                  })}
                 </p>
                 <p>{`${state.lobbyConfirmedCount}/${state.room.maxPlayers} oyuncu`}</p>
                 {state.room.maxPlayers - state.lobbyConfirmedCount === 1 ? (
@@ -112,7 +139,7 @@ export default function GamePage({ params }: GamePageProps) {
               </p>
             ) : null}
             {state.status === "Lobby" ? (
-              <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="flex flex-wrap items-center justify-center gap-3">
                 <Button variant="outline" size="sm" onClick={() => store.leaveLobby()}>
                   {store.lobbyTimeoutReached ? "İptal Et / Bakiyeyi İade Et" : "Lobiden Ayrıl"}
                 </Button>
@@ -149,6 +176,7 @@ export default function GamePage({ params }: GamePageProps) {
           state={state}
           myPlayerId={playerId}
           selectedRegionId={selectedRegionId}
+          movementDurationSeconds={gameConfig.movementDurationSeconds}
           onSelectRegion={setSelectedRegionId}
           onAttack={store.attackRegion}
         />

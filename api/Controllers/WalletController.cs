@@ -1,15 +1,20 @@
-using System.Globalization;
+using System.Security.Claims;
 using api.Models.Payments.Dtos;
 using api.Services.Payments;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace api.Controllers;
 
 /// <summary>
 /// docs/05-payment.md Bölüm 1.9, docs/07-pages.md `/cuzdan`: bakiye görüntüleme,
 /// bakiye yükleme (top-up) invoice'ı açma, para çekme talebi oluşturma.
+///
+/// docs/11-auth.md Bölüm 0.4: PlayerId istemciden asla alınmaz — yalnızca doğrulanmış
+/// JWT'nin sub claim'inden okunur (bkz. CurrentPlayerId). Route'lardaki eski
+/// {playerId} segmenti ve request body'lerindeki PlayerId alanı bu yüzden kaldırıldı.
 /// </summary>
+[Authorize]
 [ApiController]
 [Route("api/wallet")]
 public class WalletController : ControllerBase
@@ -23,24 +28,25 @@ public class WalletController : ControllerBase
         _paymentService = paymentService;
     }
 
-    [HttpGet("{playerId}")]
-    public async Task<ActionResult<WalletDto>> GetBalance(string playerId, CancellationToken cancellationToken)
+    private string CurrentPlayerId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
+    [HttpGet]
+    public async Task<ActionResult<WalletDto>> GetBalance(CancellationToken cancellationToken)
     {
-        var balance = await _walletService.GetBalanceAsync(playerId, cancellationToken);
-        return Ok(new WalletDto { PlayerId = playerId, BalanceUsd = balance.ToString("0.00", CultureInfo.InvariantCulture) });
+        return Ok(await _walletService.GetBalanceDtoAsync(CurrentPlayerId, cancellationToken));
     }
 
-    [HttpGet("{playerId}/invoices")]
-    public async Task<ActionResult<List<PaymentInvoiceDto>>> GetInvoiceHistory(string playerId, CancellationToken cancellationToken)
+    [HttpGet("invoices")]
+    public async Task<ActionResult<List<PaymentInvoiceDto>>> GetInvoiceHistory(CancellationToken cancellationToken)
     {
-        return Ok(await _paymentService.GetInvoiceHistoryAsync(playerId, cancellationToken));
+        return Ok(await _paymentService.GetInvoiceHistoryAsync(CurrentPlayerId, cancellationToken));
     }
 
     /// <summary>docs/08-page-content.md Bölüm 3.9: `/cuzdan`'daki "Bekleyen Transferler" kartı.</summary>
-    [HttpGet("{playerId}/withdrawals")]
-    public async Task<ActionResult<List<WithdrawalRequestDto>>> GetPendingWithdrawalsForPlayer(string playerId, CancellationToken cancellationToken)
+    [HttpGet("withdrawals")]
+    public async Task<ActionResult<List<WithdrawalRequestDto>>> GetPendingWithdrawalsForPlayer(CancellationToken cancellationToken)
     {
-        return Ok(await _walletService.ListForPlayerAsync(playerId, cancellationToken));
+        return Ok(await _walletService.ListForPlayerAsync(CurrentPlayerId, cancellationToken));
     }
 
     [HttpPost("topup")]
@@ -48,7 +54,7 @@ public class WalletController : ControllerBase
     {
         try
         {
-            var dto = await _paymentService.CreateTopUpInvoiceAsync(request.PlayerId, request.AmountUsd, request.PayoutAddress, cancellationToken);
+            var dto = await _paymentService.CreateTopUpInvoiceAsync(CurrentPlayerId, request.AmountUsd, cancellationToken);
             return Ok(dto);
         }
         catch (PaymentValidationException ex)
@@ -69,7 +75,7 @@ public class WalletController : ControllerBase
         try
         {
             var dto = await _walletService.RequestWithdrawalAsync(
-                request.PlayerId, request.AmountUsd, request.DestinationLtcAddress, cancellationToken);
+                CurrentPlayerId, request.AmountUsd, request.DestinationLtcAddress, cancellationToken);
             return Ok(dto);
         }
         catch (PaymentValidationException ex)

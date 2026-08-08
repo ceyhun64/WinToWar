@@ -29,6 +29,15 @@ public class Room
     /// <summary>Şifreli oda için opsiyonel kısayol linki; parolanın YERİNE geçmez.</summary>
     public string? InviteToken { get; init; }
 
-    public bool IsPractice => Type == RoomType.Practice;
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 7 "VIP-tarzı özel Practice odası": yalnızca
+    /// Type == Practice (paylaşımlı kuyruk) değil, EntryFeeUsd == 0 olan HERHANGİ
+    /// bir oda (ör. $0 girişli özel bir VIP odası) da pratik/ücretsiz davranışı
+    /// alır — ödeme akışı hiç tetiklenmez, payout adresi istenmez, maç bitince
+    /// payout denenmez (bkz. EconomyTickService, RoomEntryService). Type kasıtlı
+    /// olarak Vip kalabilir (bkz. RoomService.CreateVipRoom) ki oda `/lobi` VIP
+    /// listesinde/davet linkinde normal şekilde görünmeye devam etsin.
+    /// </summary>
+    public bool IsPractice => Type == RoomType.Practice || EntryFeeUsd == 0m;
     public bool IsPasswordProtected => RoomPasswordHash is not null;
 }

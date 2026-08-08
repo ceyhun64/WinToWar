@@ -44,7 +44,26 @@ public class WalletService
         return wallet?.BalanceUsd ?? 0m;
     }
 
-    /// <summary>Bakiyeye ekler (top-up onayı, top-up-ve-katıl shortfall onayı). Kendi SaveChanges'ını yapar.</summary>
+    /// <summary>
+    /// docs/02-architecture.md "Mapping tek yerde yapılır": WalletController bu
+    /// DTO'yu önceden elle inşa ediyordu (docs/09-eksik-tarama-promptu.md denetimi,
+    /// Faz 8'de düzeltildi) — oyun motorundaki MatchStateMapper deseniyle tutarlı
+    /// olarak mapping Service katmanına taşındı.
+    /// </summary>
+    public async Task<WalletDto> GetBalanceDtoAsync(string playerId, CancellationToken cancellationToken)
+    {
+        var balance = await GetBalanceAsync(playerId, cancellationToken);
+        return new WalletDto { PlayerId = playerId, BalanceUsd = balance.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) };
+    }
+
+    /// <summary>
+    /// Bakiyeye ekler (top-up onayı, top-up-ve-katıl shortfall onayı).
+    /// 🔒 06-coding-standards.md "Thread Safety/Concurrency": eskiden oku→değiştir→yaz
+    /// (SaveChanges) yapıyordu — iki eşzamanlı istek aynı okunan değeri baz alıp
+    /// birbirinin yazdığını ezebiliyordu (lost update). Artık `ExecuteUpdateAsync`
+    /// ile PostgreSQL'de TEK atomik `UPDATE ... SET "BalanceUsd" = "BalanceUsd" + @x`
+    /// çalışır — okuma penceresi hiç yoktur, satır kilidini veritabanı kendi verir.
+    /// </summary>
     public async Task CreditAsync(string playerId, decimal amountUsd, CancellationToken cancellationToken)
     {
         if (amountUsd < 0)
@@ -52,58 +71,38 @@ public class WalletService
             throw new InvalidOperationException("Negatif tutar bakiyeye eklenemez.");
         }
 
-        var wallet = await GetOrCreateWalletAsync(playerId, cancellationToken);
-        wallet.BalanceUsd = PaymentMath.RoundUsdForPersistence(wallet.BalanceUsd + amountUsd);
-        await _db.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Wallet bakiyesi arttı: {PlayerId}, +{AmountUsd} USD, yeni bakiye {Balance}", playerId, amountUsd, wallet.BalanceUsd);
+        var rounded = PaymentMath.RoundUsdForPersistence(amountUsd);
+        await EnsureWalletRowExistsAsync(playerId, cancellationToken);
+
+        await _db.Wallets
+            .Where(w => w.PlayerId == playerId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(w => w.BalanceUsd, w => w.BalanceUsd + rounded), cancellationToken);
+
+        _logger.LogInformation("Wallet bakiyesi arttı: {PlayerId}, +{AmountUsd} USD", playerId, rounded);
     }
 
-    /// <summary>Yeterli bakiye varsa düşer ve true döner; yoksa dokunmadan false döner. Kendi SaveChanges'ını yapar.</summary>
+    /// <summary>
+    /// Yeterli bakiye varsa atomik olarak düşer ve true döner; yoksa dokunmadan
+    /// false döner. 🔒 Bakiye kontrolü (`BalanceUsd >= amount`) ve azaltma AYNI
+    /// SQL UPDATE'in WHERE/SET'inde birlikte çalışır — bu yüzden negatif bakiye
+    /// oluşturacak bir yarış durumu (iki eşzamanlı çekim/harcama) yapısal olarak
+    /// imkânsızdır (bkz. CreditAsync'teki aynı gerekçe).
+    /// </summary>
     public async Task<bool> TryDebitAsync(string playerId, decimal amountUsd, CancellationToken cancellationToken)
     {
-        var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.PlayerId == playerId, cancellationToken);
-        if (wallet is null || wallet.BalanceUsd < amountUsd)
+        var rounded = PaymentMath.RoundUsdForPersistence(amountUsd);
+
+        var updatedRows = await _db.Wallets
+            .Where(w => w.PlayerId == playerId && w.BalanceUsd >= rounded)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(w => w.BalanceUsd, w => w.BalanceUsd - rounded), cancellationToken);
+
+        if (updatedRows == 0)
         {
             return false;
         }
 
-        wallet.BalanceUsd = PaymentMath.RoundUsdForPersistence(wallet.BalanceUsd - amountUsd);
-        await _db.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Wallet bakiyesi düştü: {PlayerId}, -{AmountUsd} USD, yeni bakiye {Balance}", playerId, amountUsd, wallet.BalanceUsd);
+        _logger.LogInformation("Wallet bakiyesi düştü: {PlayerId}, -{AmountUsd} USD", playerId, rounded);
         return true;
-    }
-
-    /// <summary>Bir oyuncunun "dosyadaki" (en son sağladığı) LTC ödül adresi — hiç sağlamadıysa null.</summary>
-    public async Task<string?> GetPayoutAddressAsync(string playerId, CancellationToken cancellationToken)
-    {
-        var wallet = await _db.Wallets.AsNoTracking().FirstOrDefaultAsync(w => w.PlayerId == playerId, cancellationToken);
-        return wallet?.PayoutAddress;
-    }
-
-    /// <summary>
-    /// 🛠️ Bir oyuncu bir odaya PaymentInvoice hiç oluşturulmadan (mevcut bakiyeden
-    /// doğrudan) katıldığında da kazanırsa ödülünün gönderileceği bir adres gerekir
-    /// — RoomEntryService, bu metotla yeni sağlanan bir adresi kalıcı olarak
-    /// kaydeder (PayoutService, invoice'ı olmayan kazananlar için buraya bakar).
-    /// suppliedAddress boşsa dosyadaki mevcut adresi (varsa) döner, hiçbiri yoksa null.
-    /// </summary>
-    public async Task<string?> ResolveAndSavePayoutAddressAsync(string playerId, string? suppliedAddress, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(suppliedAddress))
-        {
-            return await GetPayoutAddressAsync(playerId, cancellationToken);
-        }
-
-        if (!AddressValidator.TryValidate(suppliedAddress, out var format))
-        {
-            throw new PaymentValidationException("INVALID_PAYOUT_ADDRESS", "Geçersiz LTC adresi (checksum doğrulaması başarısız).");
-        }
-
-        var wallet = await GetOrCreateWalletAsync(playerId, cancellationToken);
-        wallet.PayoutAddress = suppliedAddress;
-        wallet.PayoutAddressFormat = format;
-        await _db.SaveChangesAsync(cancellationToken);
-        return suppliedAddress;
     }
 
     /// <summary>
@@ -150,6 +149,12 @@ public class WalletService
         _logger.LogInformation("Para çekme talebi oluşturuldu: {RequestId}, {PlayerId}, {AmountUsd} USD", request.Id, playerId, amountUsd);
 
         return ToDto(request);
+    }
+
+    /// <summary>docs/07-pages.md `/admin`: özet metriklerdeki "bekleyen çekim sayısı".</summary>
+    public async Task<int> CountPendingWithdrawalsAsync(CancellationToken cancellationToken)
+    {
+        return await _db.WithdrawalRequests.CountAsync(w => w.Status == WithdrawalRequestStatus.Pending, cancellationToken);
     }
 
     /// <summary>docs/07-pages.md `/admin/odemeler`: bekleyen para çekme talepleri.</summary>
@@ -237,16 +242,30 @@ public class WalletService
         return true;
     }
 
-    private async Task<Wallet> GetOrCreateWalletAsync(string playerId, CancellationToken cancellationToken)
+    /// <summary>
+    /// CreditAsync/TryDebitAsync'in atomik `ExecuteUpdateAsync` yolu yalnızca VAR
+    /// olan satırları günceller, yeni satır oluşturmaz — bu yüzden ilk kredi öncesi
+    /// satırın var olduğu garanti edilir. İki eşzamanlı isteğin aynı yeni playerId
+    /// için satırı aynı anda oluşturmaya çalışması mümkündür; bu durumda ikincisi
+    /// PK ihlaliyle karşılaşır — bu güvenle yutulur, çünkü anlamı "satır zaten var".
+    /// </summary>
+    private async Task EnsureWalletRowExistsAsync(string playerId, CancellationToken cancellationToken)
     {
-        var wallet = await _db.Wallets.FirstOrDefaultAsync(w => w.PlayerId == playerId, cancellationToken);
-        if (wallet is null)
+        var exists = await _db.Wallets.AsNoTracking().AnyAsync(w => w.PlayerId == playerId, cancellationToken);
+        if (exists)
         {
-            wallet = new Wallet { PlayerId = playerId, BalanceUsd = 0m };
-            _db.Wallets.Add(wallet);
+            return;
         }
 
-        return wallet;
+        var entry = _db.Wallets.Add(new Wallet { PlayerId = playerId, BalanceUsd = 0m });
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     private static WithdrawalRequestDto ToDto(WithdrawalRequest request) => new()

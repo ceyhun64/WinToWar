@@ -38,4 +38,16 @@ public class Player
     /// engellenmez, yalnızca bir uyarı loglanır (bkz. RoomEntryService).
     /// </summary>
     public string? JoinIpAddress { get; set; }
+
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 7 (DÜZELTME): bot her zaman şeffaf işaretlenir —
+    /// arayüzde "Bot" rozeti bu alandan türer, hiçbir yerde gizlenmez. Bot bir
+    /// Wallet/PaymentInvoice'a hiç sahip olmaz (bkz. BotMatchService), bu yüzden
+    /// PayoutService havuz hesabında (IsPaymentConfirmed && !IsBot) ile hariç
+    /// tutulur — gerçek para akışına hiç girmez.
+    /// </summary>
+    public bool IsBot { get; set; }
+
+    /// <summary>Yalnızca IsBot=true iken anlamlıdır — bkz. BotDifficulty.</summary>
+    public BotDifficulty? BotDifficulty { get; set; }
 }

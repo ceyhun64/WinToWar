@@ -33,6 +33,7 @@ public class CombatServiceTests
     private static Army CreateArmy(string ownerId, int soldierCount, string toRegionId) => new()
     {
         Id = "a1",
+        SequenceNo = 0,
         OwnerId = ownerId,
         SoldierCount = soldierCount,
         FromRegionId = "from",
@@ -143,6 +144,7 @@ public class CombatServiceTests
         var strandedArmy = new Army
         {
             Id = "stranded-army",
+            SequenceNo = 1,
             OwnerId = defender.Id,
             SoldierCount = 2,
             FromRegionId = "x",

@@ -36,11 +36,11 @@ public class PaymentServiceIntegrationTests : IDisposable
         _hubContext = new FakeHubContext();
 
         var notifier = new PaymentEventNotifier(_hubContext);
-        var refundService = new RefundService(_db, _paymentProvider, Options.Create(_config), _timeProvider, notifier, NullLogger<RefundService>.Instance);
         var mapProvider = new MapProvider(new FakeHostEnvironment(), NullLogger<MapProvider>.Instance);
         var matchManager = new MatchManager(mapProvider, TestEventLog.Writer(), NullLogger<MatchManager>.Instance);
         var priceOracle = new FixedPriceOracle(44.5m);
         var walletService = new WalletService(_db, priceOracle, _paymentProvider, Options.Create(_config), _timeProvider, NullLogger<WalletService>.Instance);
+        var refundService = new RefundService(_db, walletService, _timeProvider, NullLogger<RefundService>.Instance);
         var roomEntryService = new RoomEntryService(matchManager, walletService, NullLogger<RoomEntryService>.Instance);
 
         var room = new RoomModels.Room
@@ -70,11 +70,10 @@ public class PaymentServiceIntegrationTests : IDisposable
             NullLogger<PaymentService>.Instance);
     }
 
-    private const string ValidAddress = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
     private const string PlayerName = "Alice";
 
-    private Task<Models.Payments.Dtos.PaymentInvoiceDto> CreateInvoice(string playerId = "player-1", string address = ValidAddress) =>
-        _sut.CreateMatchEntryInvoiceAsync(_matchId, playerId, PlayerName, address, CancellationToken.None);
+    private Task<Models.Payments.Dtos.PaymentInvoiceDto> CreateInvoice(string playerId = "player-1") =>
+        _sut.CreateMatchEntryInvoiceAsync(_matchId, playerId, PlayerName, CancellationToken.None);
 
     [Fact]
     public async Task CreateInvoice_PersistsInvoiceWithRoundedAmountAndPendingStatus()
@@ -90,6 +89,26 @@ public class PaymentServiceIntegrationTests : IDisposable
         Assert.Equal(PriceOracleSource.CoinGecko, stored.PriceOracleSource);
     }
 
+    /// <summary>
+    /// Regresyon: `ReceivingAddress`/`Bip21Uri` invoice satırında kalıcılaşmalı —
+    /// önceden yalnızca oluşturma anındaki DTO'da vardı, `GetInvoiceAsync` (bu
+    /// sayfanın 3 saniyede bir polling ile çağırdığı uç) her zaman boş string
+    /// döndürüyordu, bu yüzden `/odeme/[invoiceId]` sayfasında adres ilk yükten
+    /// hemen sonra kayboluyordu.
+    /// </summary>
+    [Fact]
+    public async Task CreateInvoice_ThenGetInvoiceAsync_StillReturnsReceivingAddressAndBip21Uri()
+    {
+        var created = await CreateInvoice();
+        Assert.NotEmpty(created.ReceivingAddress);
+        Assert.NotEmpty(created.Bip21Uri);
+
+        var fetched = await _sut.GetInvoiceAsync(Guid.Parse(created.InvoiceId), CancellationToken.None);
+
+        Assert.Equal(created.ReceivingAddress, fetched.ReceivingAddress);
+        Assert.Equal(created.Bip21Uri, fetched.Bip21Uri);
+    }
+
     [Fact]
     public async Task CreateInvoice_CalledTwiceForSamePlayerAndMatch_ReturnsSameInvoice_Idempotent()
     {
@@ -97,13 +116,8 @@ public class PaymentServiceIntegrationTests : IDisposable
         var second = await CreateInvoice();
 
         Assert.Equal(first.InvoiceId, second.InvoiceId);
+        Assert.NotEmpty(second.ReceivingAddress);
         Assert.Equal(1, await _db.PaymentInvoices.CountAsync());
-    }
-
-    [Fact]
-    public async Task InvalidPayoutAddress_ThrowsValidationException()
-    {
-        await Assert.ThrowsAsync<PaymentValidationException>(() => CreateInvoice(address: "not-a-real-address"));
     }
 
     [Fact]

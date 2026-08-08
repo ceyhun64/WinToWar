@@ -22,12 +22,12 @@ export default function AdminMaclarPage() {
       {matches.length === 0 ? (
         <p className="text-sm text-muted-foreground">Aktif maç yok.</p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-3">
           {matches.map((m) => (
             <li key={m.matchId}>
               <Card size="sm" className="flex-row items-center justify-between">
                 <CardContent className="flex-1">
-                  <p className="flex items-center gap-1.5 font-medium">
+                  <p className="flex items-center gap-3 font-medium">
                     {m.roomType} <Badge variant="outline">{m.status}</Badge>
                   </p>
                   <p className="text-xs text-muted-foreground">

@@ -10,24 +10,6 @@ public enum PaymentInvoiceStatus
     Failed
 }
 
-/// <summary>Bölüm 5.2 state machine.</summary>
-public enum PayoutStatus
-{
-    PayoutPending,
-    PayoutSent,
-    Completed,
-    Failed
-}
-
-/// <summary>Bölüm 5.3 state machine.</summary>
-public enum RefundStatus
-{
-    RefundPending,
-    RefundSent,
-    Completed,
-    Failed
-}
-
 public enum PayoutAddressFormat
 {
     Base58Check,
@@ -53,7 +35,7 @@ public enum RefundReason
     Manual
 }
 
-/// <summary>Bölüm 1.9: WithdrawalRequest.Status — Refund.Status ile aynı desende, ayrı bir state machine.</summary>
+/// <summary>Bölüm 1.9: WithdrawalRequest.Status — tek gerçek async (on-chain gönderim gerektiren) para hareketi bu olduğundan kendi ayrı state machine'ini korur.</summary>
 public enum WithdrawalRequestStatus
 {
     Pending,
@@ -62,6 +44,19 @@ public enum WithdrawalRequestStatus
     Completed,
     Rejected,
     Failed
+}
+
+/// <summary>
+/// 🚩❓ Bölüm 10.1 "KYC/AML zorunluluğu": üçüncü parti bir KYC sağlayıcı entegrasyonu
+/// şimdi yazılmaz — bu yalnızca ileride doldurulabilecek bir placeholder alandır
+/// (bkz. Wallet.KycStatus). Varsayılan her zaman NotRequired'dır.
+/// </summary>
+public enum KycStatus
+{
+    NotRequired,
+    Pending,
+    Verified,
+    Rejected
 }
 
 /// <summary>

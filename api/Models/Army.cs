@@ -19,4 +19,14 @@ public class Army
 
     /// <summary>Set erişimcisi (init değil) kasıtlı: MovementService varış zamanını hesaplarken kullanır.</summary>
     public DateTime ArrivesAtUtc { get; set; }
+
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 10 "Tam eşzamanlı varış — tie-break kuralı":
+    /// maç içi, `Match.NextArmySequenceNo`'dan atanan, hiçbir zaman azalmayan bir
+    /// sayaç — `ArrivesAtUtc` milisaniye seviyesinde birebir eşit olan orduların
+    /// hangisinin ÖNCE oluşturulduğunu (yola çıktığını) gösterir. `Id` (rastgele
+    /// GUID) kasıtlı olarak tie-break için KULLANILMAZ — oluşturulma sırasıyla
+    /// hiçbir ilişkisi yoktur.
+    /// </summary>
+    public required long SequenceNo { get; init; }
 }

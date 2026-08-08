@@ -1,6 +1,5 @@
 using api.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace api.Controllers;
 
@@ -21,12 +20,12 @@ public record AdminMatchEventDto(int SequenceNo, string EventType, string Payloa
 public class AdminMatchesController : ControllerBase
 {
     private readonly MatchManager _matchManager;
-    private readonly GameEventDbContext _gameEventDb;
+    private readonly MatchEventLogReader _eventLogReader;
 
-    public AdminMatchesController(MatchManager matchManager, GameEventDbContext gameEventDb)
+    public AdminMatchesController(MatchManager matchManager, MatchEventLogReader eventLogReader)
     {
         _matchManager = matchManager;
-        _gameEventDb = gameEventDb;
+        _eventLogReader = eventLogReader;
     }
 
     [HttpGet]
@@ -53,12 +52,11 @@ public class AdminMatchesController : ControllerBase
     [HttpGet("{matchId}/events")]
     public async Task<ActionResult<List<AdminMatchEventDto>>> GetEvents(string matchId, CancellationToken cancellationToken)
     {
-        var events = await _gameEventDb.MatchEventLogs
-            .Where(e => e.MatchId == matchId)
-            .OrderBy(e => e.SequenceNo)
+        var events = await _eventLogReader.GetEventsAsync(matchId, cancellationToken);
+        var dtos = events
             .Select(e => new AdminMatchEventDto(e.SequenceNo, e.EventType.ToString(), e.PayloadJson, e.OccurredAt))
-            .ToListAsync(cancellationToken);
+            .ToList();
 
-        return Ok(events);
+        return Ok(dtos);
     }
 }

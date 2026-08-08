@@ -32,7 +32,7 @@ export default function AdminKullanicilarPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-lg font-semibold">Kullanıcılar</h1>
 
-      <div className="flex gap-2">
+      <div className="flex gap-3">
         <Input
           className="flex-1"
           value={playerId}
@@ -59,13 +59,13 @@ export default function AdminKullanicilarPage() {
             {user.invoices.length === 0 ? (
               <p className="mt-1 text-sm text-muted-foreground">Kayıt yok.</p>
             ) : (
-              <ul className="mt-2 flex flex-col gap-2 text-sm">
+              <ul className="mt-2 flex flex-col gap-3 text-sm">
                 {user.invoices.map((i) => (
                   <li key={i.invoiceId}>
                     <Card size="sm">
                       <CardContent className="flex justify-between">
                         <span>{i.matchId ? "Maça Giriş" : "Para Yatırma"}</span>
-                        <span className="flex items-center gap-1.5 tabular-nums">
+                        <span className="flex items-center gap-3 tabular-nums">
                           ${i.amountUsd} <Badge variant="outline">{i.status}</Badge>
                         </span>
                       </CardContent>

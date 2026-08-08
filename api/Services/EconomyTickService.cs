@@ -4,6 +4,7 @@ using api.Models.Dtos;
 using api.Models.Payments;
 using api.Services.Payments;
 using api.Services.GameEngine;
+using api.Services.Matchmaking;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,6 +24,7 @@ public class EconomyTickService : BackgroundService
 {
     private readonly MatchManager _matchManager;
     private readonly MovementService _movementService;
+    private readonly BotMatchService _botMatchService;
     private readonly MatchEventLogWriter _eventLogWriter;
     private readonly IHubContext<GameHub> _hubContext;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -31,6 +33,7 @@ public class EconomyTickService : BackgroundService
     public EconomyTickService(
         MatchManager matchManager,
         MovementService movementService,
+        BotMatchService botMatchService,
         MatchEventLogWriter eventLogWriter,
         IHubContext<GameHub> hubContext,
         IServiceScopeFactory scopeFactory,
@@ -38,6 +41,7 @@ public class EconomyTickService : BackgroundService
     {
         _matchManager = matchManager;
         _movementService = movementService;
+        _botMatchService = botMatchService;
         _eventLogWriter = eventLogWriter;
         _hubContext = hubContext;
         _scopeFactory = scopeFactory;
@@ -128,6 +132,19 @@ public class EconomyTickService : BackgroundService
         {
             await _hubContext.Clients.Group(match.Id).SendAsync("LobbyTimeoutReached", cancellationToken: cancellationToken);
         }
+
+        // docs/03-game-rules.md Bölüm 7 (DÜZELTME): 5 dakikalık (Practice 60 sn)
+        // uzun zaman aşımından ayrı, çok daha kısa bir bot-doldurma penceresi —
+        // FillLobbyWithBots kendi içinde VIP/lobi-durumu guard'larını uygular.
+        var deadline = match.BotFillDeadlineUtc;
+        if (deadline is DateTime botDeadline && now >= botDeadline)
+        {
+            var addedBots = _botMatchService.FillLobbyWithBots(match, now);
+            if (addedBots.Count > 0)
+            {
+                await BroadcastState(match, cancellationToken);
+            }
+        }
     }
 
     /// <summary>
@@ -154,6 +171,9 @@ public class EconomyTickService : BackgroundService
     {
         ApplyProduction(match, now);
         _movementService.ProcessArrivals(match, now);
+        // docs/03-game-rules.md Bölüm 7 (DÜZELTME): bot kararları, güncel üretim/
+        // varış sonrası tahtaya göre değerlendirilir — en son gerçek durumu kullanır.
+        _botMatchService.ProcessBotDecisions(match, now);
         var newlyEliminated = ProcessAbandonment(match, now);
         EvaluateMatchEnd(match, now, newlyEliminated);
     }
@@ -187,7 +207,7 @@ public class EconomyTickService : BackgroundService
 
         foreach (var player in match.Players.Where(p => !p.IsEliminated))
         {
-            var homeRegion = match.Regions.Values.FirstOrDefault(r => r.IsProducingHomeRegionOf(player.Id));
+            var homeRegion = match.Regions.Values.FirstOrDefault(r => IsProducingHomeRegionOf(r, player.Id));
             if (homeRegion is null)
             {
                 continue;
@@ -200,6 +220,15 @@ public class EconomyTickService : BackgroundService
             homeRegion.SoldierCount = Math.Min(GameConfig.MaxAccumulatedTroops, homeRegion.SoldierCount + production);
         }
     }
+
+    /// <summary>
+    /// docs/02-architecture.md "Models — entity'ler yalnızca veri ve durumu tutar":
+    /// bu iş kuralı önceden Region.IsProducingHomeRegionOf olarak entity üzerindeydi,
+    /// buraya (Service katmanına, tek çağrı noktası) taşındı (docs/09-eksik-tarama-promptu.md
+    /// denetimi, Faz 8). Yalnızca hâlâ kendi orijinal sahibinin elindeyken üretim yapar.
+    /// </summary>
+    private static bool IsProducingHomeRegionOf(Region region, string playerId) =>
+        region.OriginalOwnerId == playerId && region.OwnerId == playerId;
 
     /// <summary>Bağlantısı kopan oyuncu AbandonmentTimeoutSeconds içinde dönmezse otomatik elenir.</summary>
     private List<string> ProcessAbandonment(Match match, DateTime now)

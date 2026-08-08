@@ -1,11 +1,18 @@
+using System.Text;
 using api;
 using api.Hubs;
+using api.Models.Auth;
 using api.Services;
+using api.Services.Auth;
 using api.Services.GameEngine;
+using api.Services.Matchmaking;
 using api.Services.Payments;
 using api.Services.Rooms;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,12 +53,16 @@ builder.Services.AddCors(options =>
 // WinToWar oyun motoru servisleri.
 builder.Services.AddSingleton<MapProvider>();
 builder.Services.AddSingleton<MatchEventLogWriter>();
+// 🛠️ Scoped: GameEventDbContext (Scoped) wrap eder — bkz. MatchEventLogReader.cs.
+builder.Services.AddScoped<MatchEventLogReader>();
 builder.Services.AddSingleton<MatchManager>();
 builder.Services.AddSingleton<RoomService>();
 builder.Services.AddSingleton<SupportTicketStore>();
 builder.Services.Configure<AdminConfig>(builder.Configuration.GetSection(AdminConfig.SectionName));
 builder.Services.AddSingleton<CombatService>();
 builder.Services.AddSingleton<MovementService>();
+// docs/03-game-rules.md Bölüm 7 (DÜZELTME) / Bölüm 13: bot eşleştirme+AI servisi.
+builder.Services.AddSingleton<BotMatchService>();
 builder.Services.AddHostedService<EconomyTickService>();
 builder.Services.AddHostedService<MatchEventLogFlushService>();
 
@@ -114,9 +125,29 @@ builder.Services.AddSingleton<IPriceOracle>(sp =>
     );
 });
 
-// 🛠️ Bölüm 0.3 ön koşulu: BTCPay regtest/testnet erişilemediği için sahte
-// implementasyonla ilerlendi (bkz. Payments/Providers/FakePaymentProvider.cs).
-builder.Services.AddSingleton<IPaymentProvider, FakePaymentProvider>();
+// BtcPayGreenfieldProvider: BaseAddress/API key config'ten (Payment.BtcPay*)
+// okunur, o yüzden ConfigureHttpClient((sp, client) => ...) overload'u kullanılır
+// (basit AddHttpClient(name, client => ...) formunun aksine, DI'a erişim gerekir).
+builder.Services.AddHttpClient("BtcPay").ConfigureHttpClient((sp, client) =>
+{
+    var paymentConfig = sp.GetRequiredService<IOptions<PaymentConfig>>().Value;
+    client.BaseAddress = new Uri(paymentConfig.BtcPayBaseUrl);
+    client.DefaultRequestHeaders.Add("Authorization", $"token {paymentConfig.BtcPayApiKey}");
+});
+
+// 🛠️ Bölüm 0.3 ön koşulu: BTCPay regtest/testnet erişilemediği için Development'ta
+// sahte implementasyon kullanılır (bkz. FakePaymentProvider.cs). Development dışı
+// ortamlarda gerçek BtcPayGreenfieldProvider kayıtlıdır — 🚩 bu sınıf canlı bir
+// BTCPay instance'ına karşı çalıştırılarak doğrulanamadı (erişim yok), canlıya
+// almadan önce regtest/testnet'e karşı uçtan uca test edilmelidir.
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<IPaymentProvider, FakePaymentProvider>();
+}
+else
+{
+    builder.Services.AddSingleton<IPaymentProvider, BtcPayGreenfieldProvider>();
+}
 
 builder.Services.AddScoped<PaymentEventNotifier>();
 builder.Services.AddScoped<RefundService>();
@@ -124,23 +155,112 @@ builder.Services.AddScoped<PayoutService>();
 builder.Services.AddScoped<WalletService>();
 builder.Services.AddScoped<RoomEntryService>();
 builder.Services.AddScoped<PaymentService>();
-builder.Services.AddHostedService<ReconciliationService>();
+
+// ---- Kimlik doğrulama modülü (docs/11-auth.md) — ödeme/oyun motorundan ayrı, üçüncü bir katman ----
+builder.Services.Configure<AuthConfig>(builder.Configuration.GetSection(AuthConfig.SectionName));
+builder.Services.AddDbContext<AuthDbContext>(
+    (sp, options) =>
+    {
+        var authConfig = sp.GetRequiredService<IOptions<AuthConfig>>().Value;
+        options.UseNpgsql(authConfig.ConnectionString);
+    }
+);
+builder.Services.AddSingleton<AuthRateLimiter>();
+builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddSingleton<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
+builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
+builder.Services.AddScoped<AuthService>();
+
+var authConfigForJwt = builder.Configuration.GetSection(AuthConfig.SectionName).Get<AuthConfig>() ?? new AuthConfig();
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = authConfigForJwt.JwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = authConfigForJwt.JwtAudience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(authConfigForJwt.JwtSigningKey)),
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+
+        // docs/11-auth.md Bölüm 1.4/3.5: SignalR handshake header taşıyamaz, access_token
+        // query param'ı üzerinden okunur (ASP.NET Core'un resmi SignalR+JWT deseni).
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(accessToken) && context.HttpContext.Request.Path.StartsWithSegments("/hub"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+    });
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
 using (var startupScope = app.Services.CreateScope())
 {
-    startupScope.ServiceProvider.GetRequiredService<PaymentDbContext>().Database.EnsureCreated();
-    startupScope.ServiceProvider.GetRequiredService<GameEventDbContext>().Database.EnsureCreated();
+    // 06-coding-standards.md#Veritabanı/Migration Disiplini: şema migration
+    // tabanlı yönetilir, EnsureCreated() (izlenemez/geri alınamaz) kullanılmaz.
+    startupScope.ServiceProvider.GetRequiredService<PaymentDbContext>().Database.Migrate();
+    startupScope.ServiceProvider.GetRequiredService<GameEventDbContext>().Database.Migrate();
+    startupScope.ServiceProvider.GetRequiredService<AuthDbContext>().Database.Migrate();
+
+    // docs/11-auth.md Bölüm 1.9: ilk admin self-servis kayıttan oluşturulamaz,
+    // yalnızca env var/appsettings'ten (SeedAdminEmail/SeedAdminPassword) okunur
+    // ve yalnızca eşleşen bir Player yoksa bir kez oluşturulur.
+    var authConfig = startupScope.ServiceProvider.GetRequiredService<IOptions<AuthConfig>>().Value;
+    if (!string.IsNullOrWhiteSpace(authConfig.SeedAdminEmail) && !string.IsNullOrWhiteSpace(authConfig.SeedAdminPassword))
+    {
+        var authDb = startupScope.ServiceProvider.GetRequiredService<AuthDbContext>();
+        var seedEmail = authConfig.SeedAdminEmail.Trim().ToLowerInvariant();
+        if (!authDb.PlayerAccounts.Any(p => p.Email == seedEmail))
+        {
+            var admin = new PlayerAccount
+            {
+                Email = seedEmail,
+                DisplayName = "Admin",
+                Role = PlayerRole.Admin,
+                Status = PlayerStatus.Active,
+                EmailVerifiedAt = DateTime.UtcNow,
+                AgeConfirmedAt = DateTime.UtcNow,
+                TermsAcceptedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+            };
+            admin.PasswordHash = new PasswordHasher<PlayerAccount>().HashPassword(admin, authConfig.SeedAdminPassword);
+            authDb.PlayerAccounts.Add(admin);
+            authDb.SaveChanges();
+        }
+    }
 
     // docs/03-game-rules.md Bölüm 2.2: oda kapasiteleri haritadaki bölge sayısını
     // aşamaz — aşarsa "N oyuncu, N'den az bölge" gibi imkânsız bir kombinasyona
-    // sessizce izin verilmiş olur, bu yüzden açılışta yakalanır.
+    // sessizce izin verilmiş olur, bu yüzden açılışta yakalanır. 🛠️ docs/09-eksik-tarama-promptu.md
+    // denetimi (Faz 5): önceden yalnızca VIP/Standart kontrol ediliyordu, Practice
+    // eksikti — eklendi. Bilinçli tercih: bu, RoomService'te sessizce Math.Min(...)
+    // ile kapasiteyi kısan bir "runtime clamp" DEĞİLDİR — Standart/Practice'in
+    // oyuncu sayısı müşteri tarafından 🔒 verilmiş sabit değerlerdir (bkz.
+    // `03-game-rules.md`), bunları harita küçültüldüğünde sessizce değiştirmek
+    // müşteri kararını ihlal eder; bunun yerine uygulama başlangıçta AÇIKÇA çöker
+    // ki yanlış yapılandırma hiçbir zaman sessizce prod'a çıkmasın.
     var regionCount = startupScope.ServiceProvider.GetRequiredService<MapProvider>().RegionCount;
-    if (GameConfig.VipRoomMaxPlayers > regionCount || GameConfig.StandardRoomPlayerCount > regionCount)
+    if (GameConfig.VipRoomMaxPlayers > regionCount ||
+        GameConfig.StandardRoomPlayerCount > regionCount ||
+        GameConfig.PracticeRoomDefaultPlayerCount > regionCount)
     {
         throw new InvalidOperationException(
-            $"Oda kapasiteleri (VIP={GameConfig.VipRoomMaxPlayers}, Standart={GameConfig.StandardRoomPlayerCount}) haritadaki bölge sayısını ({regionCount}) aşıyor.");
+            $"Oda kapasiteleri (VIP={GameConfig.VipRoomMaxPlayers}, Standart={GameConfig.StandardRoomPlayerCount}, " +
+            $"Practice={GameConfig.PracticeRoomDefaultPlayerCount}) haritadaki bölge sayısını ({regionCount}) aşıyor.");
     }
 }
 
@@ -153,6 +273,9 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors(WebClientCorsPolicy);
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<GameHub>("/hub/game");
@@ -167,3 +290,8 @@ app.MapGet("/api/health", async (PaymentDbContext db) =>
 });
 
 app.Run();
+
+// docs/11-auth.md Bölüm 8 "PlayerId güvenliği" testi: WebApplicationFactory<Program>
+// (api.Tests) Program sınıfına erişebilmek için bunu public yapar — top-level
+// statement'lar varsayılan olarak internal bir Program sınıfı üretir.
+public partial class Program;

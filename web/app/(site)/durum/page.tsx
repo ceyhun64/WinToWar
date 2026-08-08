@@ -1,22 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Activity, Server, Database } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
+import { PageHero } from "@/components/layout/PageHero";
+import { GameCard } from "@/components/layout/GameCard";
 import { API_BASE_URL } from "@/lib/game/api";
 
 type ComponentStatus = "checking" | "up" | "down";
 
-function StatusRow({ label, status }: { label: string; status: ComponentStatus }) {
+function StatusRow({ icon: Icon, label, status }: { icon: typeof Server; label: string; status: ComponentStatus }) {
   const variant = status === "up" ? "default" : status === "down" ? "destructive" : "outline";
   const text = status === "up" ? "Çalışıyor" : status === "down" ? "Kesinti" : "Kontrol ediliyor...";
   return (
-    <Card size="sm">
+    <GameCard size="sm">
       <CardContent className="flex items-center justify-between">
-        <span className="text-sm font-medium">{label}</span>
+        <span className="flex items-center gap-2.5 text-sm font-medium">
+          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+          {label}
+        </span>
         <Badge variant={variant}>{text}</Badge>
       </CardContent>
-    </Card>
+    </GameCard>
   );
 }
 
@@ -40,11 +46,11 @@ export default function DurumPage() {
   }, []);
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4 px-4 py-8">
-      <h1 className="text-lg font-semibold">Sistem Durumu</h1>
-      <div className="flex flex-col gap-2">
-        <StatusRow label="API" status={api} />
-        <StatusRow label="Veritabanı" status={database} />
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-4 py-8">
+      <PageHero icon={Activity} title="Sistem Durumu" />
+      <div className="flex flex-col gap-3">
+        <StatusRow icon={Server} label="API" status={api} />
+        <StatusRow icon={Database} label="Veritabanı" status={database} />
       </div>
     </div>
   );

@@ -9,6 +9,15 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- 06-coding-standards.md "Bağımlılık Disiplini": dotnet-ef migration tooling'i için zorunlu, yalnızca derleme zamanı kullanılır (PrivateAssets), çalışma zamanına dahil edilmez. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- docs/11-auth.md Bölüm 1.4: JWT Bearer authentication (access token doğrulama, API + SignalR). -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
+    <!-- docs/11-auth.md Bölüm 1.2 🛠️ kütüphane istisnası: Google id_token doğrulaması resmi kütüphaneyle yapılır. -->
+    <PackageReference Include="Google.Apis.Auth" Version="1.69.0" />
   </ItemGroup>
 
   <ItemGroup>

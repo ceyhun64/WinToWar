@@ -114,40 +114,6 @@ public class WalletServiceTests : IDisposable
             _sut.RequestWithdrawalAsync("p1", 0.50m, ValidAddress, CancellationToken.None));
     }
 
-    [Fact]
-    public async Task ResolveAndSavePayoutAddressAsync_SuppliedAddress_SavesAndReturnsIt()
-    {
-        var resolved = await _sut.ResolveAndSavePayoutAddressAsync("p1", ValidAddress, CancellationToken.None);
-
-        Assert.Equal(ValidAddress, resolved);
-        Assert.Equal(ValidAddress, await _sut.GetPayoutAddressAsync("p1", CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task ResolveAndSavePayoutAddressAsync_NoneSuppliedButOneOnFile_ReturnsExisting()
-    {
-        await _sut.ResolveAndSavePayoutAddressAsync("p1", ValidAddress, CancellationToken.None);
-
-        var resolved = await _sut.ResolveAndSavePayoutAddressAsync("p1", null, CancellationToken.None);
-
-        Assert.Equal(ValidAddress, resolved);
-    }
-
-    [Fact]
-    public async Task ResolveAndSavePayoutAddressAsync_NoneSuppliedAndNoneOnFile_ReturnsNull()
-    {
-        var resolved = await _sut.ResolveAndSavePayoutAddressAsync("never-seen", null, CancellationToken.None);
-
-        Assert.Null(resolved);
-    }
-
-    [Fact]
-    public async Task ResolveAndSavePayoutAddressAsync_InvalidAddress_Throws()
-    {
-        await Assert.ThrowsAsync<PaymentValidationException>(() =>
-            _sut.ResolveAndSavePayoutAddressAsync("p1", "not-a-real-address", CancellationToken.None));
-    }
-
     /// <summary>Bölüm 1.9: Pending -> Approved -> Sent -> Completed sırayla geçilir (bkz. ApproveWithdrawalAsync).</summary>
     [Fact]
     public async Task ApproveWithdrawalAsync_ProviderSucceeds_EndsCompleted_AndSetsProcessedAt()

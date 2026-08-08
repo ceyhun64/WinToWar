@@ -48,6 +48,7 @@ public class MovementService
         var army = new Army
         {
             Id = Guid.NewGuid().ToString("N"),
+            SequenceNo = match.NextArmySequenceNo++,
             OwnerId = player.Id,
             SoldierCount = soldierCount,
             FromRegionId = fromRegion.Id,
@@ -68,15 +69,16 @@ public class MovementService
     /// Varan orduları işler: kendi bölgesine varan takviye garnizona katılır, aksi
     /// halde çatışma çözülür ve hayatta kalan tüm saldıranlar (varsa) yeni garrison
     /// olur — otomatik zincirleme bir sonraki bölgeye devam etmez (tek hop). Aynı
-    /// bölgeye varan birden fazla ordu, varış sırasına göre (eşit zamanda Army.Id
-    /// sırası) tek tek işlenir — hiçbir zaman birleşik güç olarak toplanmaz.
+    /// bölgeye varan birden fazla ordu, varış sırasına göre (eşit zamanda oluşturulma/
+    /// yola çıkma sırası — Army.SequenceNo, bkz. docs/03-game-rules.md Bölüm 10)
+    /// tek tek işlenir — hiçbir zaman birleşik güç olarak toplanmaz.
     /// </summary>
     public List<Army> ProcessArrivals(Match match, DateTime now)
     {
         var arrived = match.Armies
             .Where(a => a.ArrivesAtUtc <= now)
             .OrderBy(a => a.ArrivesAtUtc)
-            .ThenBy(a => a.Id, StringComparer.Ordinal)
+            .ThenBy(a => a.SequenceNo)
             .ToList();
 
         foreach (var army in arrived)

@@ -22,6 +22,8 @@ export interface PlayerDto {
   isEliminated: boolean;
   isConnected: boolean;
   isPaymentConfirmed: boolean;
+  /** docs/03-game-rules.md Bölüm 7: her zaman şeffaf gösterilir — bkz. Bot rozeti kuralı. */
+  isBot: boolean;
 }
 
 export interface RegionStateDto {

@@ -84,6 +84,28 @@ public static class GameConfig
     // 🛠️ Oyuncu başına saniyede en fazla aksiyon sayısı (spam koruması, Bölüm 11).
     public const int PlayerActionRateLimitPerSecond = 5;
 
+    // ---- Bot politikası (Bölüm 7 DÜZELTME — "bot yok" kararı geri alındı) ----
+    // 🔒 Müşterinin verdiği "10-15 saniye" aralığı: lobiye ilk gerçek oyuncu
+    // girdikten sonra bu kadar süre canlı eşleşme olmazsa bot(lar) masaya eklenir.
+    public const int BotMatchWaitMinSeconds = 10;
+    public const int BotMatchWaitMaxSeconds = 15;
+
+    // 🛠️ Bot zorluk dağılımı — varsayılan %60 Normal/%25 Kolay/%15 Zor (Bölüm 7),
+    // toplamı 100 olmalı. Belirli bir oyuncuya/sıraya göre manipüle edilmez.
+    public const int BotDifficultyEasyWeight = 25;
+    public const int BotDifficultyNormalWeight = 60;
+    public const int BotDifficultyHardWeight = 15;
+
+    // 🛠️ Bot AI karar aralığı — müşteri belirtmedi, zorluk profiline göre bot
+    // ne sıklıkla saldırı fırsatı değerlendirir (Zor daha sık/optimal, Kolay
+    // daha seyrek/pasif). Gerçek zamanlı, sonuç önceden belirlenmez (Bölüm 7).
+    public const int BotDecisionIntervalSecondsEasy = 12;
+    public const int BotDecisionIntervalSecondsNormal = 7;
+    public const int BotDecisionIntervalSecondsHard = 4;
+
+    // 🛠️ Kolay bot yalnızca büyük bir asker fazlası birikince saldırır (pasif profil).
+    public const int BotEasyMinSurplusToAttack = 6;
+
     // ---- Denetim kaydı (docs/02-architecture.md "Maç Denetim Kaydı") ----
     // ❓ Saklama süresi müşteriden netleştirilmeli, 🛠️ varsayılan 90 gün.
     public const int MatchEventLogRetentionDays = 90;

@@ -3,60 +3,93 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getOrCreatePlayerId, getStoredDisplayName, isSignedIn, setStoredDisplayName } from "@/lib/identity";
+import { PageHero } from "@/components/layout/PageHero";
+import { GameCard } from "@/components/layout/GameCard";
+import { CardContent } from "@/components/ui/card";
+import { ensureSessionLoaded, isSignedIn } from "@/lib/identity";
+import { login } from "@/lib/auth/api";
+import { GoogleContinueButton } from "@/components/auth/GoogleContinueButton";
 
-/**
- * 🛠️ Auth yöntemi müşteri tarafından netleştirilmedi (bkz. docs/07-pages.md ❓).
- * Backend'de henüz bir kullanıcı/parola sistemi yok — giriş, tarayıcıya kayıtlı
- * kalıcı kimliği (bkz. lib/identity.ts) bir görünen adla ilişkilendirir. Gerçek
- * auth eklendiğinde bu sayfa email/parola formuna dönüşür, geri kalan kod
- * (Wallet/oda entegrasyonu) değişmeden çalışmaya devam eder.
- */
+/** docs/11-auth.md Bölüm 3.3/6: gerçek e-posta/parola girişi + Google ile devam et. */
 export default function GirisPage() {
   const router = useRouter();
-  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (isSignedIn()) {
-      router.replace("/lobi");
-      return;
-    }
-    setDisplayName(getStoredDisplayName() ?? "");
+    ensureSessionLoaded().then(() => {
+      if (isSignedIn()) {
+        router.replace("/lobi");
+      }
+    });
   }, [router]);
 
-  function handleSubmit() {
-    if (!displayName.trim()) {
-      setError("Görünen adınızı girin.");
+  async function handleSubmit() {
+    if (!email.trim() || !password) {
+      setError("E-posta ve şifrenizi girin.");
       return;
     }
-    getOrCreatePlayerId();
-    setStoredDisplayName(displayName.trim());
-    router.push("/lobi");
+    setBusy(true);
+    setError(null);
+    try {
+      await login(email.trim(), password);
+      router.push("/lobi");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Giriş başarısız oldu.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-16">
-      <div>
-        <h1 className="text-lg font-semibold">Giriş</h1>
-        <p className="text-sm text-muted-foreground">Devam etmek için görünen adınızı girin.</p>
-      </div>
+      <PageHero icon={LogIn} title="Giriş" subtitle="Devam etmek için e-posta ve şifrenizi girin." />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="displayName">Görünen ad</Label>
-        <Input
-          id="displayName"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Adınız"
-        />
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      </div>
+      <GameCard>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
+            <Label htmlFor="email">E-posta</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="ornek@eposta.com"
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            />
+          </div>
+          <div className="flex flex-col gap-3">
+            <Label htmlFor="password">Şifre</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Şifreniz"
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            />
+          </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <Button onClick={handleSubmit}>Giriş Yap</Button>
+          <Button disabled={busy} onClick={handleSubmit}>
+            {busy ? "Giriş yapılıyor..." : "Giriş Yap"}
+          </Button>
+
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            veya
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <GoogleContinueButton onError={setError} onSuccess={() => router.push("/lobi")} />
+        </CardContent>
+      </GameCard>
 
       <div className="flex flex-col items-center gap-1 text-center text-xs text-muted-foreground">
         <p>

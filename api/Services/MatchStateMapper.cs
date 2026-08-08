@@ -49,7 +49,8 @@ public static class MatchStateMapper
                 Name = p.Name,
                 IsEliminated = p.IsEliminated,
                 IsConnected = p.ConnectionStatus == PlayerConnectionStatus.Connected,
-                IsPaymentConfirmed = p.IsPaymentConfirmed
+                IsPaymentConfirmed = p.IsPaymentConfirmed,
+                IsBot = p.IsBot
             }).ToList(),
             Regions = match.Regions.Values.Select(r =>
             {

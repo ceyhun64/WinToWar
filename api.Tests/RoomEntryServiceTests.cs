@@ -11,8 +11,6 @@ namespace api.Tests;
 /// <summary>docs/05-payment.md Bölüm 1.9: Wallet ↔ MatchManager entegrasyon noktası — katılım/rollback davranışı.</summary>
 public class RoomEntryServiceTests : IDisposable
 {
-    private const string ValidAddress = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
-
     private readonly PaymentDbContext _db;
     private readonly Microsoft.Data.Sqlite.SqliteConnection _connection;
     private readonly MatchManager _matchManager;
@@ -50,48 +48,11 @@ public class RoomEntryServiceTests : IDisposable
         var match = CreateRoom(entryFeeUsd: 1.00m);
         await _walletService.CreditAsync("p1", 3.00m, CancellationToken.None);
 
-        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", ValidAddress, DateTime.UtcNow, CancellationToken.None);
+        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", DateTime.UtcNow, CancellationToken.None);
 
         Assert.Equal(RoomEntryOutcome.Joined, result.Outcome);
         Assert.Equal(2.00m, await _walletService.GetBalanceAsync("p1", CancellationToken.None));
         Assert.Contains(match.Players, p => p.Id == "p1" && p.IsPaymentConfirmed);
-    }
-
-    [Fact]
-    public async Task TryJoinAsync_NoPayoutAddressSuppliedOrOnFile_ReturnsPayoutAddressRequired_DoesNotTouchWalletOrReserve()
-    {
-        var match = CreateRoom(entryFeeUsd: 1.00m);
-        await _walletService.CreditAsync("p1", 3.00m, CancellationToken.None);
-
-        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", null, DateTime.UtcNow, CancellationToken.None);
-
-        Assert.Equal(RoomEntryOutcome.PayoutAddressRequired, result.Outcome);
-        Assert.Empty(match.Players);
-        Assert.Equal(3.00m, await _walletService.GetBalanceAsync("p1", CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task TryJoinAsync_InvalidPayoutAddress_ReturnsInvalidPayoutAddress()
-    {
-        var match = CreateRoom(entryFeeUsd: 1.00m);
-        await _walletService.CreditAsync("p1", 3.00m, CancellationToken.None);
-
-        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", "not-a-real-address", DateTime.UtcNow, CancellationToken.None);
-
-        Assert.Equal(RoomEntryOutcome.InvalidPayoutAddress, result.Outcome);
-        Assert.Empty(match.Players);
-    }
-
-    [Fact]
-    public async Task TryJoinAsync_PayoutAddressAlreadyOnFile_NotSuppliedAgain_StillJoins()
-    {
-        var match = CreateRoom(entryFeeUsd: 1.00m);
-        await _walletService.CreditAsync("p1", 3.00m, CancellationToken.None);
-        await _walletService.ResolveAndSavePayoutAddressAsync("p1", ValidAddress, CancellationToken.None);
-
-        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", null, DateTime.UtcNow, CancellationToken.None);
-
-        Assert.Equal(RoomEntryOutcome.Joined, result.Outcome);
     }
 
     [Fact]
@@ -100,7 +61,7 @@ public class RoomEntryServiceTests : IDisposable
         var match = CreateRoom(entryFeeUsd: 1.00m);
         await _walletService.CreditAsync("p1", 0.40m, CancellationToken.None);
 
-        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", ValidAddress, DateTime.UtcNow, CancellationToken.None);
+        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", DateTime.UtcNow, CancellationToken.None);
 
         Assert.Equal(RoomEntryOutcome.InsufficientBalance, result.Outcome);
         Assert.Equal(0.60m, result.ShortfallUsd);
@@ -112,10 +73,10 @@ public class RoomEntryServiceTests : IDisposable
     public async Task TryJoinAsync_RoomFull_RefundsDebitedAmountAndReturnsRoomFull()
     {
         var match = CreateRoom(entryFeeUsd: 1.00m, maxPlayers: 1);
-        _matchManager.ReservePlayer(match, "Existing");
+        _matchManager.ReservePlayer(match, "Existing", DateTime.UtcNow);
         await _walletService.CreditAsync("p2", 5.00m, CancellationToken.None);
 
-        var result = await _sut.TryJoinAsync(match.Id, "p2", "Bob", ValidAddress, DateTime.UtcNow, CancellationToken.None);
+        var result = await _sut.TryJoinAsync(match.Id, "p2", "Bob", DateTime.UtcNow, CancellationToken.None);
 
         Assert.Equal(RoomEntryOutcome.RoomFull, result.Outcome);
         Assert.Equal(5.00m, await _walletService.GetBalanceAsync("p2", CancellationToken.None)); // geri eklendi
@@ -126,18 +87,33 @@ public class RoomEntryServiceTests : IDisposable
     {
         var match = CreateRoom(entryFeeUsd: 0m);
 
-        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", ValidAddress, DateTime.UtcNow, CancellationToken.None);
+        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", DateTime.UtcNow, CancellationToken.None);
 
         Assert.Equal(RoomEntryOutcome.Joined, result.Outcome);
         Assert.Equal(0m, await _walletService.GetBalanceAsync("p1", CancellationToken.None));
     }
 
     [Fact]
-    public async Task TryJoinAsync_PracticeRoom_NeverRequiresPayoutAddress()
+    public async Task TryJoinAsync_PracticeRoom_Joins()
     {
         var match = CreateRoom(entryFeeUsd: 0m, type: RoomType.Practice);
 
-        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", null, DateTime.UtcNow, CancellationToken.None);
+        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", DateTime.UtcNow, CancellationToken.None);
+
+        Assert.Equal(RoomEntryOutcome.Joined, result.Outcome);
+    }
+
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 7 "VIP-tarzı özel Practice odası": Type=Vip
+    /// olarak kalan ama EntryFeeUsd=0 olan bir oda (bkz. RoomService.CreateVipRoom
+    /// yorumu) da Room.IsPractice üzerinden pratik davranışı almalı.
+    /// </summary>
+    [Fact]
+    public async Task TryJoinAsync_ZeroFeeVipRoom_BehavesLikePractice()
+    {
+        var match = CreateRoom(entryFeeUsd: 0m, type: RoomType.Vip);
+
+        var result = await _sut.TryJoinAsync(match.Id, "p1", "Alice", DateTime.UtcNow, CancellationToken.None);
 
         Assert.Equal(RoomEntryOutcome.Joined, result.Outcome);
     }
@@ -147,10 +123,10 @@ public class RoomEntryServiceTests : IDisposable
     {
         // VIP kurucusu senaryosu: oda oluşturulurken zaten (onaysız) rezerve edilmiştir.
         var match = CreateRoom(entryFeeUsd: 1.00m);
-        var creator = _matchManager.ReservePlayer(match, "Creator", forcedPlayerId: "creator");
+        var creator = _matchManager.ReservePlayer(match, "Creator", DateTime.UtcNow, forcedPlayerId: "creator");
         await _walletService.CreditAsync("creator", 1.00m, CancellationToken.None);
 
-        var result = await _sut.TryJoinAsync(match.Id, "creator", "Creator", ValidAddress, DateTime.UtcNow, CancellationToken.None);
+        var result = await _sut.TryJoinAsync(match.Id, "creator", "Creator", DateTime.UtcNow, CancellationToken.None);
 
         Assert.Equal(RoomEntryOutcome.Joined, result.Outcome);
         Assert.Single(match.Players);

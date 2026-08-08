@@ -98,7 +98,7 @@ export function PracticeDemo() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
         <NativeSelect
           value={target}
           onChange={(e) => setTarget(e.target.value as "b" | "c")}

@@ -16,12 +16,20 @@ public class Wallet
     public decimal BalanceUsd { get; set; }
 
     /// <summary>
-    /// Oyuncunun "dosyadaki" LTC ödül adresi — bir oyuncu bir odaya doğrudan mevcut
-    /// bakiyesinden katıldığında (hiç PaymentInvoice oluşmadan, bkz. RoomEntryService)
-    /// kazanırsa ödülünün gönderileceği yerdir. İlk sağlandığında kaydedilir, sonraki
-    /// katılımlarda tekrar sorulmadan kullanılır. PaymentInvoice.PayoutAddress'ten
-    /// bağımsızdır (bir invoice varsa PayoutService önce onu tercih eder).
+    /// 🚩❓ docs/05-payment.md Bölüm 10.1 "KYC/AML zorunluluğu": ileride doldurulabilecek
+    /// placeholder — üçüncü parti bir KYC sağlayıcı entegrasyonu şimdi yazılmaz.
+    /// Wallet üzerinde tutulur çünkü projede henüz ayrı, kalıcı bir User/Account
+    /// entity'si yok (bkz. `PlayerId` yorumundaki auth notu) — Wallet, bir oyuncunun
+    /// platformla süregelen ilişkisini temsil eden tek EF Core ile kalıcı kayıttır.
     /// </summary>
-    public string? PayoutAddress { get; set; }
-    public PayoutAddressFormat? PayoutAddressFormat { get; set; }
+    public KycStatus KycStatus { get; set; } = KycStatus.NotRequired;
+
+    /// <summary>
+    /// docs/05-payment.md Bölüm 10.1: yaş onayının ne zaman verildiğinin kanıtı.
+    /// `/kayit` formundaki "18 yaşından büyüğüm" onayı şu an yalnızca client
+    /// tarafında (bkz. `web/app/(site)/kayit/page.tsx`) tutuluyor — bu alan, o
+    /// onayın backend'de de kalıcı bir izini bırakabilmesi için ayrılmıştır.
+    /// Doldurulması (kayıt akışının bu alana gerçekten yazması) ayrı bir görevdir.
+    /// </summary>
+    public DateTime? AgeConfirmedAt { get; set; }
 }

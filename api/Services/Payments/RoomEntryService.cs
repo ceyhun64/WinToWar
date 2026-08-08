@@ -6,16 +6,7 @@ public enum RoomEntryOutcome
 {
     Joined,
     RoomFull,
-    InsufficientBalance,
-
-    /// <summary>
-    /// 🛠️ v9 düzeltmesi: bir maça (Practice hariç) katılan her oyuncunun, kazanırsa
-    /// ödülünü alacağı bir LTC adresi olmalıdır — invoice akışında bu zaten
-    /// toplanıyordu, ancak bakiyesi yeten bir oyuncu hiç invoice oluşturmadan
-    /// doğrudan katılabildiğinden (bkz. Bölüm 1.9), bu adımda ayrıca istenir.
-    /// </summary>
-    PayoutAddressRequired,
-    InvalidPayoutAddress
+    InsufficientBalance
 }
 
 public record RoomEntryResult(RoomEntryOutcome Outcome, decimal ShortfallUsd, string? PlayerId, int? Slot);
@@ -45,36 +36,12 @@ public class RoomEntryService
         _logger = logger;
     }
 
-    /// <summary>
-    /// <paramref name="payoutAddress"/> opsiyoneldir — daha önce sağlanmış ve
-    /// Wallet'ta kayıtlı bir adres varsa tekrar istenmez (bkz. WalletService.
-    /// ResolveAndSavePayoutAddressAsync). Practice odalarda (docs Bölüm 1.8)
-    /// hiç istenmez, çünkü Payout akışı zaten tetiklenmez.
-    /// </summary>
     public async Task<RoomEntryResult> TryJoinAsync(
-        string matchId, string playerId, string playerName, string? payoutAddress, DateTime now, CancellationToken cancellationToken, string? joinIpAddress = null)
+        string matchId, string playerId, string playerName, DateTime now, CancellationToken cancellationToken, string? joinIpAddress = null)
     {
         if (!_matchManager.TryGetMatch(matchId, out var match))
         {
             return new RoomEntryResult(RoomEntryOutcome.RoomFull, 0m, null, null);
-        }
-
-        if (!match.Room.IsPractice)
-        {
-            string? resolvedPayoutAddress;
-            try
-            {
-                resolvedPayoutAddress = await _walletService.ResolveAndSavePayoutAddressAsync(playerId, payoutAddress, cancellationToken);
-            }
-            catch (PaymentValidationException)
-            {
-                return new RoomEntryResult(RoomEntryOutcome.InvalidPayoutAddress, 0m, null, null);
-            }
-
-            if (resolvedPayoutAddress is null)
-            {
-                return new RoomEntryResult(RoomEntryOutcome.PayoutAddressRequired, 0m, null, null);
-            }
         }
 
         var entryFee = match.Room.EntryFeeUsd;
@@ -95,7 +62,11 @@ public class RoomEntryService
         var debited = await _walletService.TryDebitAsync(playerId, entryFee, cancellationToken);
         if (!debited)
         {
-            // Eşzamanlı bir başka işlem bakiyeyi tam bu anda tüketmiş olabilir (race).
+            // Yukarıdaki GetBalanceAsync yalnızca iyimser bir ön kontroldür — asıl
+            // garanti TryDebitAsync'in kendi atomik UPDATE'idir (bkz. WalletService).
+            // Eşzamanlı bir başka işlem bakiyeyi bu ikisi arasında tüketmiş olabilir;
+            // bu durumda TryDebitAsync güvenle false döner, hiçbir yarış/kayıp
+            // güncelleme oluşmaz.
             return new RoomEntryResult(RoomEntryOutcome.InsufficientBalance, entryFee, null, null);
         }
 
@@ -132,7 +103,7 @@ public class RoomEntryService
 
         try
         {
-            var player = _matchManager.ReservePlayer(match, playerName, forcedPlayerId: playerId, joinIpAddress: joinIpAddress);
+            var player = _matchManager.ReservePlayer(match, playerName, now, forcedPlayerId: playerId, joinIpAddress: joinIpAddress);
             _matchManager.ConfirmPlayerPayment(match.Id, player.Id, now);
             return player;
         }

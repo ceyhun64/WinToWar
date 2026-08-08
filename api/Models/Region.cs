@@ -19,7 +19,4 @@ public class Region
     public string? OwnerId { get; set; }
 
     public int SoldierCount { get; set; }
-
-    /// <summary>Yalnızca hâlâ kendi orijinal sahibinin elindeyken üretim yapar (bkz. docs Bölüm 4).</summary>
-    public bool IsProducingHomeRegionOf(string playerId) => OriginalOwnerId == playerId && OwnerId == playerId;
 }

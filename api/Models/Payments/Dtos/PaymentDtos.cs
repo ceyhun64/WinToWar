@@ -6,21 +6,19 @@ namespace api.Models.Payments.Dtos;
 /// culture/format belirsizliğine düşmemek için. web/lib/game/types.ts içindeki
 /// TypeScript tipleri bunlarla birebir eşleşir.
 /// </summary>
+/// <summary>
+/// docs/11-auth.md Bölüm 0.4: PlayerId artık burada taşınmaz — controller çağıranın
+/// JWT'sinden okur (bkz. PaymentsController/WalletController CurrentPlayerId).
+/// </summary>
 public class CreatePaymentInvoiceRequest
 {
-    public required string PlayerId { get; init; }
-
     /// <summary>Bölüm 1.9: MatchId dolu invoice'larda, onay anında oyuncuyu lobiye rezerve edebilmek için gereklidir.</summary>
     public required string PlayerName { get; init; }
-
-    public required string PayoutAddress { get; init; }
 }
 
 public class CreateTopUpInvoiceRequest
 {
-    public required string PlayerId { get; init; }
     public required decimal AmountUsd { get; init; }
-    public required string PayoutAddress { get; init; }
 }
 
 public class PaymentInvoiceDto
@@ -61,7 +59,6 @@ public class WalletDto
 
 public class RequestWithdrawalRequest
 {
-    public required string PlayerId { get; init; }
     public required decimal AmountUsd { get; init; }
     public required string DestinationLtcAddress { get; init; }
 }
@@ -93,20 +90,19 @@ public class PaymentConfirmedEvent
 }
 
 /// <summary>
-/// v8: tekil kazanan alanları yerine Recipients dizisi taşır (bkz. docs/05-payment.md
-/// Bölüm 7) — Match.Winners tek elemanlıysa dizi de tek elemanlıdır, birden fazla
-/// ortak kazanan varsa dizi o kadar eleman içerir.
+/// 2026-08-08 kararı: kazanç artık on-chain LTC olarak değil, doğrudan
+/// Wallet.BalanceUsd'ye kredi olarak işlenir (bkz. PayoutService) — bu yüzden
+/// adres/on-chain durum/tx id alanları taşımaz, yalnızca kredilenen USD tutarı.
+/// Match.Winners tek elemanlıysa dizi de tek elemanlıdır, birden fazla ortak
+/// kazanan varsa dizi o kadar eleman içerir.
 /// </summary>
 public class PayoutRecipientDto
 {
     public required string WinnerPlayerId { get; init; }
-    public required string PayoutAddress { get; init; }
-    public required string AmountLtc { get; init; }
-    public required string Status { get; init; }
-    public string? BtcPayTransactionId { get; init; }
+    public required string AmountUsd { get; init; }
 }
 
-/// <summary>SignalR "PayoutCompleted" event payload'ı (v8: Recipients dizisiyle).</summary>
+/// <summary>SignalR "PayoutCompleted" event payload'ı.</summary>
 public class PayoutCompletedEvent
 {
     public required string MatchId { get; init; }
@@ -117,17 +113,7 @@ public class PayoutCompletedEvent
 public class PayoutSummaryDto
 {
     public required string MatchId { get; init; }
-    public required string Status { get; init; }
-    public required string TotalPoolLtc { get; init; }
-    public required string CommissionLtc { get; init; }
+    public required string TotalPoolUsd { get; init; }
+    public required string CommissionUsd { get; init; }
     public required List<PayoutRecipientDto> Recipients { get; init; }
-}
-
-/// <summary>SignalR "RefundCompleted" event payload'ı. MatchId null ise saf top-up invoice'ının iadesidir.</summary>
-public class RefundCompletedEvent
-{
-    public string? MatchId { get; init; }
-    public required string PlayerId { get; init; }
-    public required string AmountLtc { get; init; }
-    public required string Reason { get; init; }
 }

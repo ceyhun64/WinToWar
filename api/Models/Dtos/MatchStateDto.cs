@@ -44,6 +44,9 @@ public class PlayerDto
     public required bool IsEliminated { get; init; }
     public required bool IsConnected { get; init; }
     public required bool IsPaymentConfirmed { get; init; }
+
+    /// <summary>docs/03-game-rules.md Bölüm 7: her zaman şeffaf gösterilir, gizlenmez.</summary>
+    public required bool IsBot { get; init; }
 }
 
 public class RegionStateDto

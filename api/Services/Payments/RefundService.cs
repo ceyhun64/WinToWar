@@ -1,50 +1,54 @@
-using System.Globalization;
 using api.Models.Payments;
-using api.Models.Payments.Dtos;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace api.Services.Payments;
 
 /// <summary>
-/// Bölüm 5.3 state machine'i + retry/backoff/jitter (Bölüm 0.3) uygular.
-/// İki aşamalı çalışır: <see cref="SubmitAsync"/> yalnızca bir Refund kaydı
-/// EKLER (SaveChanges/commit çağıranın sorumluluğundadır — böylece PaymentService
-/// gibi zaten bir transaction içinde olan çağıranlar için nested-transaction
-/// sorunu oluşmaz); asıl dış çağrı (BTCPay'e gönderim) <see cref="ProcessDueRefundsAsync"/>
-/// tarafından, ReconciliationService'in periyodik tick'i üzerinden ayrıca yapılır.
+/// İade artık on-chain LTC gönderimi değil, doğrudan kazanana/oyuncuya
+/// Wallet.BalanceUsd kredisi olarak işlenir (2026-08-08 kararı — bkz.
+/// docs/05-payment.md Bölüm 1.9, PayoutService'teki aynı desen). Bu yüzden ayrı
+/// bir gönderim/retry/reconciliation adımına ihtiyaç yoktur: <see cref="SubmitAsync"/>
+/// hem Refund kaydını ekler hem de krediyi aynı anda uygular; SaveChanges/commit
+/// yine de çağıranın sorumluluğundadır (böylece PaymentService gibi zaten bir
+/// transaction içinde olan çağıranlar için nested-transaction sorunu oluşmaz).
 /// </summary>
 public class RefundService
 {
     private readonly PaymentDbContext _db;
-    private readonly IPaymentProvider _paymentProvider;
-    private readonly PaymentConfig _config;
+    private readonly WalletService _walletService;
     private readonly TimeProvider _timeProvider;
-    private readonly PaymentEventNotifier _notifier;
     private readonly ILogger<RefundService> _logger;
 
     public RefundService(
         PaymentDbContext db,
-        IPaymentProvider paymentProvider,
-        IOptions<PaymentConfig> config,
+        WalletService walletService,
         TimeProvider timeProvider,
-        PaymentEventNotifier notifier,
         ILogger<RefundService> logger)
     {
         _db = db;
-        _paymentProvider = paymentProvider;
-        _config = config.Value;
+        _walletService = walletService;
         _timeProvider = timeProvider;
-        _notifier = notifier;
         _logger = logger;
     }
 
     /// <summary>
-    /// Bir invoice için refund kaydı ekler (idempotency anahtarı: PaymentInvoiceId,
-    /// unique index — aynı invoice için ikinci bir SubmitAsync çağrısı, SaveChanges
-    /// anında unique-violation-as-no-op ile engellenir). SaveChanges YAPMAZ.
+    /// Bir invoice için refund kaydı ekler ve tutarı aynı anda oyuncunun bakiyesine
+    /// kredi olarak işler. SaveChanges YAPMAZ — çağıranın kendi transaction'ı içinde
+    /// kalıcılaşır. İnvoice tam olarak iade ediliyorsa (Confirmed → Refunded ileri
+    /// geçiş geçerliyse) invoice.Status da burada güncellenir — kısmi bir fazla ödeme
+    /// iadesinde (invoice hâlâ Pending iken, webhook'un kendi akışı invoice'ı ayrıca
+    /// Confirmed'e taşıyacağından) bu geçiş doğal olarak uygulanmaz.
+    ///
+    /// 🔒 Eşzamanlılık notu: bu metot yalnızca `PaymentService.HandleWebhookAsync`
+    /// içinden (overpayment) çağrılır — o metodun kendi `ProcessedWebhookEvents`
+    /// INSERT-first unique constraint'i, aynı webhook event'inin eşzamanlı iki kez
+    /// işlenmesini üst seviyede zaten engeller (bkz. o metodun kendi idempotency
+    /// yorumu). Bu yüzden burada SaveChanges'tan önce krediyi uygulamak güvenlidir.
+    /// Bağımsız/tekrar tetiklenebilir çağıranlar (ör. admin'in "manuel iade" butonu)
+    /// bu metodu DEĞİL, aşağıdaki <see cref="SubmitAndPersistAsync"/>'i kullanmalı —
+    /// o, aynı yarış durumuna karşı DB seviyesinde korunur.
     /// </summary>
-    public async Task SubmitAsync(PaymentInvoice invoice, decimal amountLtc, RefundReason reason, CancellationToken cancellationToken)
+    public async Task SubmitAsync(PaymentInvoice invoice, decimal amountUsd, RefundReason reason, CancellationToken cancellationToken)
     {
         var alreadyExists = await _db.Refunds.AnyAsync(r => r.PaymentInvoiceId == invoice.Id, cancellationToken);
         if (alreadyExists)
@@ -58,11 +62,19 @@ public class RefundService
             Id = Guid.NewGuid(),
             PaymentInvoiceId = invoice.Id,
             PlayerId = invoice.PlayerId,
-            AmountLtc = amountLtc,
+            AmountUsd = amountUsd,
             Reason = reason,
-            Status = RefundStatus.RefundPending,
             CreatedAt = _timeProvider.GetUtcNow()
         });
+
+        await _walletService.CreditAsync(invoice.PlayerId, amountUsd, cancellationToken);
+
+        if (StatusRankPolicy.IsForwardTransition(invoice.Status, PaymentInvoiceStatus.Refunded))
+        {
+            invoice.Status = PaymentInvoiceStatus.Refunded;
+        }
+
+        _logger.LogInformation("Refund işlendi: {InvoiceId}, {AmountUsd} USD, sebep={Reason}", invoice.Id, amountUsd, reason);
     }
 
     /// <summary>
@@ -77,115 +89,55 @@ public class RefundService
         return invoices.OrderByDescending(i => i.CreatedAt).FirstOrDefault();
     }
 
-    /// <summary>SubmitAsync + SaveChanges — kendi transaction'ı olmayan, tek seferlik çağıranlar için (bkz. GameHub.LeaveLobby).</summary>
-    public async Task SubmitAndPersistAsync(PaymentInvoice invoice, decimal amountLtc, RefundReason reason, CancellationToken cancellationToken)
-    {
-        await SubmitAsync(invoice, amountLtc, reason, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
-    }
-
     /// <summary>
-    /// ReconciliationService tarafından periyodik çağrılır: gönderilmemiş veya
-    /// retry zamanı gelmiş RefundPending kayıtlarını BTCPay'e gönderir.
+    /// Kendi transaction'ı olmayan, tekrar tetiklenebilir çağıranlar için (ör.
+    /// `AdminPaymentsController.RefundInvoice` — çift tıklama/çift istek riski
+    /// taşır). `SubmitAsync`'in aksine krediyi UYGULAMADAN ÖNCE Refund satırını
+    /// SaveChanges ile kalıcılaştırmayı dener: aynı invoice için eşzamanlı ikinci
+    /// bir çağrı burada `PaymentInvoiceId` unique index'i ihlaliyle güvenle
+    /// no-op'a düşer (transaction rollback edilir, kredi HİÇ uygulanmaz) — bu,
+    /// `PayoutService.ProcessPayoutAsync`'teki "SaveChanges önce, kredi sonra"
+    /// deseniyle aynıdır (bkz. o metodun yorumu).
     /// </summary>
-    public async Task ProcessDueRefundsAsync(CancellationToken cancellationToken)
+    public async Task SubmitAndPersistAsync(PaymentInvoice invoice, decimal amountUsd, RefundReason reason, CancellationToken cancellationToken)
     {
-        var now = _timeProvider.GetUtcNow();
-
-        // 🛠️ Not: NextRetryAt (DateTimeOffset) karşılaştırması client-side yapılır —
-        // SQLite EF Core provider'ı bu tür ifadeleri WHERE içinde translate edemiyor.
-        var candidates = await _db.Refunds
-            .Where(r => r.Status == RefundStatus.RefundPending && r.BtcPayTransactionId == null)
-            .ToListAsync(cancellationToken);
-        var due = candidates.Where(r => r.NextRetryAt is null || r.NextRetryAt <= now).ToList();
-
-        foreach (var refund in due)
+        var alreadyExists = await _db.Refunds.AnyAsync(r => r.PaymentInvoiceId == invoice.Id, cancellationToken);
+        if (alreadyExists)
         {
-            await TrySendAsync(refund, cancellationToken);
-        }
-    }
-
-    private async Task TrySendAsync(Refund refund, CancellationToken cancellationToken)
-    {
-        var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == refund.PaymentInvoiceId, cancellationToken);
-        if (invoice is null)
-        {
-            _logger.LogError("Refund için invoice bulunamadı: {RefundId}, invoice={InvoiceId}", refund.Id, refund.PaymentInvoiceId);
+            _logger.LogInformation("Invoice için zaten bir refund kaydı var, atlanıyor: {InvoiceId}", invoice.Id);
             return;
+        }
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+        _db.Refunds.Add(new Refund
+        {
+            Id = Guid.NewGuid(),
+            PaymentInvoiceId = invoice.Id,
+            PlayerId = invoice.PlayerId,
+            AmountUsd = amountUsd,
+            Reason = reason,
+            CreatedAt = _timeProvider.GetUtcNow()
+        });
+
+        if (StatusRankPolicy.IsForwardTransition(invoice.Status, PaymentInvoiceStatus.Refunded))
+        {
+            invoice.Status = PaymentInvoiceStatus.Refunded;
         }
 
         try
         {
-            var result = await _paymentProvider.SendRefundAsync(invoice.PayoutAddress, refund.AmountLtc, cancellationToken);
-            refund.BtcPayTransactionId = result.BtcPayTransactionId;
-            refund.Status = RefundStatus.RefundSent;
             await _db.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation("Refund gönderildi: {RefundId} -> {TxId}", refund.Id, result.BtcPayTransactionId);
         }
-        catch (Exception ex)
+        catch (DbUpdateException ex)
         {
-            await HandleSendFailureAsync(refund, ex, cancellationToken);
-        }
-    }
-
-    private async Task HandleSendFailureAsync(Refund refund, Exception ex, CancellationToken cancellationToken)
-    {
-        refund.RetryCount += 1;
-        var now = _timeProvider.GetUtcNow();
-
-        if (refund.RetryCount > _config.RefundRetryCount)
-        {
-            refund.Status = RefundStatus.Failed;
-            refund.NextRetryAt = null;
-            _logger.LogError(ex, "Refund kalıcı olarak başarısız (retry limiti aşıldı): {RefundId}", refund.Id);
-        }
-        else
-        {
-            var jitterSeconds = Random.Shared.Next(0, Math.Max(1, _config.RefundRetryJitterSeconds));
-            var backoffSeconds = _config.RefundRetryBaseDelaySeconds * Math.Pow(_config.RetryBackoffMultiplier, refund.RetryCount - 1);
-            refund.NextRetryAt = now.AddSeconds(backoffSeconds + jitterSeconds);
-            _logger.LogWarning(ex, "Refund gönderimi başarısız, {RetryAt} zamanında tekrar denenecek: {RefundId} (deneme {RetryCount}/{MaxRetries})",
-                refund.NextRetryAt, refund.Id, refund.RetryCount, _config.RefundRetryCount);
+            await transaction.RollbackAsync(cancellationToken);
+            _logger.LogInformation(ex, "Refund INSERT çakışması (eşzamanlı çift çağrı), atlanıyor: {InvoiceId}", invoice.Id);
+            return;
         }
 
-        await _db.SaveChangesAsync(cancellationToken);
-    }
+        await _walletService.CreditAsync(invoice.PlayerId, amountUsd, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
-    /// <summary>
-    /// ReconciliationService tarafından çağrılır: RefundSent durumundaki kayıtlar
-    /// için gerçekleşen fee/onay bilgisini kontrol eder ve Completed'a taşır.
-    /// </summary>
-    public async Task ReconcileSentRefundsAsync(CancellationToken cancellationToken)
-    {
-        var sent = await _db.Refunds.Where(r => r.Status == RefundStatus.RefundSent).ToListAsync(cancellationToken);
-        foreach (var refund in sent)
-        {
-            var actualFee = await _paymentProvider.GetActualNetworkFeeAsync(refund.BtcPayTransactionId!, cancellationToken);
-            if (actualFee is null)
-            {
-                continue; // henüz on-chain doğrulanmadı, sonraki tick'te tekrar denenir.
-            }
-
-            refund.Status = RefundStatus.Completed;
-            refund.CompletedAt = _timeProvider.GetUtcNow();
-            await _db.SaveChangesAsync(cancellationToken);
-
-            var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == refund.PaymentInvoiceId, cancellationToken);
-            if (invoice?.MatchId is not null)
-            {
-                // MatchId null (saf top-up invoice'ının iadesi) ise bildirilecek bir
-                // SignalR maç grubu yoktur — oyuncu /cuzdan üzerinden bakiyesini görür.
-                await _notifier.NotifyRefundCompletedAsync(invoice.MatchId, new RefundCompletedEvent
-                {
-                    MatchId = invoice.MatchId,
-                    PlayerId = refund.PlayerId,
-                    AmountLtc = refund.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture),
-                    Reason = refund.Reason.ToString()
-                }, cancellationToken);
-            }
-
-            _logger.LogInformation("Refund tamamlandı: {RefundId}", refund.Id);
-        }
+        _logger.LogInformation("Refund işlendi: {InvoiceId}, {AmountUsd} USD, sebep={Reason}", invoice.Id, amountUsd, reason);
     }
 }

@@ -1,50 +1,161 @@
-// 🛠️ Auth mekanizması henüz netleşmedi (bkz. docs/07-pages.md ❓). Gerçek bir
-// backend auth sistemi kurulana kadar, tarayıcıya özgü kalıcı bir kimlik
-// (localStorage) + kullanıcının girdiği bir görünen ad kullanılır. Wallet/oda
-// katılımı bu id üzerinden çalışır (bkz. api/Models/Payments/Wallet.cs).
-// Gerçek auth eklendiğinde bu modülün iç implementasyonu değişir, çağıran
-// kod (getPlayerId/getDisplayName) aynı kalabilir.
+// docs/11-auth.md: gerçek e-posta/parola + Google kimlik doğrulama sistemi.
+// Bu dosya önceden yalnızca tarayıcıya kayıtlı, sunucu tarafından hiç
+// doğrulanmayan bir kimliği (localStorage) tutuyordu — artık gerçek bir oturumu
+// (kısa ömürlü JWT access token, yalnızca memory'de — bkz. docs/11-auth.md
+// Bölüm 1.4 "Frontend localStorage'a yazmaz") temsil eder. Çağıran kod
+// (isSignedIn/getStoredDisplayName/signOut) aynı kalır — yalnızca iç
+// implementasyon değişti (bu dosyanın önceki hâlindeki yorumun vaat ettiği gibi).
+//
+// Ağ çağrıları (register/login/vb.) burada değil `web/lib/auth/api.ts`'te —
+// bu dosya yalnızca oturum STATE'ini ve kimlik doğrulamalı istekler için ortak
+// `authFetch` yardımcısını taşır (bkz. 02-architecture.md `lib/<modül>/` deseni).
 
-const PLAYER_ID_KEY = "wintowar:playerId";
-const DISPLAY_NAME_KEY = "wintowar:displayName";
-const PAYOUT_ADDRESS_KEY = "wintowar:payoutAddress";
+// 🛠️ web/lib/game/api.ts'teki API_BASE_URL ile aynı değer — döngüsel import'tan
+// kaçınmak için (game/api.ts zaten bu dosyadan importluyor) burada ayrıca tanımlanır.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5019";
 
-export function getOrCreatePlayerId(): string {
-  let id = window.localStorage.getItem(PLAYER_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID().replace(/-/g, "");
-    window.localStorage.setItem(PLAYER_ID_KEY, id);
-  }
-  return id;
+export interface SessionPlayer {
+  id: string;
+  email: string;
+  displayName: string;
+  role: "Player" | "Admin";
+  status: "Active" | "Suspended" | "PendingDeletion" | "Deleted";
+  emailVerified: boolean;
+  hasPassword: boolean;
+  googleLinked: boolean;
 }
 
-export function getStoredDisplayName(): string | null {
-  return window.localStorage.getItem(DISPLAY_NAME_KEY);
+let accessToken: string | null = null;
+let currentPlayer: SessionPlayer | null = null;
+let sessionLoadPromise: Promise<void> | null = null;
+
+/**
+ * Header/Navbar gibi bileşenler oturum değiştiğinde (login/register/logout/
+ * displayName güncellemesi) yeniden mount olmadan haberdar olsun diye —
+ * `currentPlayer` düz bir modül değişkeni olduğundan React state/context
+ * dışında bu basit pub-sub olmadan değişiklik hiçbir yerde yansımıyordu.
+ */
+const sessionListeners = new Set<() => void>();
+
+function notifySessionListeners(): void {
+  sessionListeners.forEach((listener) => listener());
 }
 
-export function setStoredDisplayName(name: string): void {
-  window.localStorage.setItem(DISPLAY_NAME_KEY, name);
+export function subscribeToSession(listener: () => void): () => void {
+  sessionListeners.add(listener);
+  return () => sessionListeners.delete(listener);
+}
+
+/** web/lib/auth/api.ts: register/login/google/refresh başarılı olduğunda çağırır. */
+export function applySession(token: string, player: SessionPlayer): void {
+  accessToken = token;
+  currentPlayer = player;
+  notifySessionListeners();
+}
+
+function clearSession(): void {
+  accessToken = null;
+  currentPlayer = null;
+  notifySessionListeners();
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+export function getCurrentPlayerId(): string | null {
+  return currentPlayer?.id ?? null;
+}
+
+export function getCurrentRole(): "Player" | "Admin" | null {
+  return currentPlayer?.role ?? null;
 }
 
 export function isSignedIn(): boolean {
-  return Boolean(getStoredDisplayName());
+  return currentPlayer !== null;
+}
+
+export function getStoredDisplayName(): string | null {
+  return currentPlayer?.displayName ?? null;
+}
+
+/** 🛠️ Bölüm 6'da bir "görünen ad değiştir" ucu tanımlanmadığından yalnızca yerel/oturum içi bir önbellek güncellemesidir (bkz. hesap-ayarlari sayfası). */
+export function setStoredDisplayName(name: string): void {
+  if (currentPlayer) {
+    currentPlayer = { ...currentPlayer, displayName: name };
+    notifySessionListeners();
+  }
 }
 
 export function signOut(): void {
-  window.localStorage.removeItem(PLAYER_ID_KEY);
-  window.localStorage.removeItem(DISPLAY_NAME_KEY);
+  const token = accessToken;
+  clearSession();
+  fetch(`${API_BASE_URL}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch(() => {
+    // Sunucu tarafı logout başarısız olsa bile client oturumu zaten temizlendi.
+  });
+}
+
+async function refreshSessionFromCookie(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      clearSession();
+      return;
+    }
+    const body = (await res.json()) as { accessToken: string; player: SessionPlayer };
+    applySession(body.accessToken, body.player);
+  } catch {
+    clearSession();
+  }
 }
 
 /**
- * docs/05-payment.md Bölüm 1.9: ücretsiz (Practice) olmayan her katılımda bir LTC
- * ödül adresi gerekir — burada yalnızca UI'ın formu önceden doldurabilmesi için
- * kolaylık amaçlı saklanır; tek doğruluk kaynağı sunucudaki Wallet.PayoutAddress'tir
- * (bkz. api/Services/Payments/WalletService.cs ResolveAndSavePayoutAddressAsync).
+ * Sayfa ilk yüklendiğinde (access token yalnızca memory'de tutulduğundan sayfa
+ * yenilemede kaybolur) HttpOnly refresh cookie'siyle sessiz bir oturum
+ * yenilemesi dener. AuthGuard/AdminGate ve isSignedIn()'e güvenen bileşenler
+ * ilk kontrolden önce bunu `await` etmelidir.
  */
-export function getStoredPayoutAddress(): string | null {
-  return window.localStorage.getItem(PAYOUT_ADDRESS_KEY);
+export function ensureSessionLoaded(): Promise<void> {
+  if (currentPlayer !== null) {
+    return Promise.resolve();
+  }
+  if (!sessionLoadPromise) {
+    sessionLoadPromise = refreshSessionFromCookie();
+  }
+  return sessionLoadPromise;
 }
 
-export function setStoredPayoutAddress(address: string): void {
-  window.localStorage.setItem(PAYOUT_ADDRESS_KEY, address);
+/**
+ * docs/11-auth.md Bölüm 0.4: kimlik doğrulamalı tüm istekler (cüzdan/lobi/profil/
+ * hesap-ayarları) Authorization header'ı üzerinden gider, playerId asla body/query
+ * içinde taşınmaz. Access token süresi dolmuşsa (401) bir kez sessiz refresh
+ * denenir, sonra istek tekrarlanır.
+ */
+export async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  await ensureSessionLoaded();
+
+  const doFetch = () =>
+    fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      credentials: "include",
+      headers: {
+        ...(options.headers ?? {}),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+      },
+    });
+
+  let res = await doFetch();
+  if (res.status === 401 && accessToken !== null) {
+    await refreshSessionFromCookie();
+    res = await doFetch();
+  }
+  return res;
 }

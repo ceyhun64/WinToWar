@@ -5,6 +5,15 @@ import { GameConnection } from "./signalr-client";
 import type { MatchStateDto } from "./types";
 
 /**
+ * docs/07-pages.md Sayfa Bazlı State Matrisi (/game/[matchId]): Connecting →
+ * Synchronizing → Playing → (Reconnecting ↔ Playing) → Finished. Bu store
+ * yalnızca bağlantı katmanını temsil eder (Connecting/Connected/Reconnecting/
+ * Disconnected) — Synchronizing/Playing/Finished ayrımı `state.status`'tan
+ * (MatchStatus) zaten okunabilir, burada tekrarlanmaz.
+ */
+export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
+
+/**
  * İstemci tarafı oyun state yönetimi. Redux/Zustand gibi bir bağımlılık yerine
  * hafif bir React hook: SignalR bağlantısını kurar, MatchState yayınlarını
  * dinler ve aksiyon fonksiyonlarını dışa verir. Bağlantı koptuğunda
@@ -14,8 +23,9 @@ import type { MatchStateDto } from "./types";
 export function useGameStore(matchId: string, playerId: string) {
   const [state, setState] = useState<MatchStateDto | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [lobbyTimeoutReached, setLobbyTimeoutReached] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const connectionRef = useRef<GameConnection | null>(null);
 
   useEffect(() => {
@@ -27,6 +37,7 @@ export function useGameStore(matchId: string, playerId: string) {
     }
 
     let cancelled = false;
+    setConnectionStatus("connecting");
     const connection = new GameConnection();
     connectionRef.current = connection;
 
@@ -48,8 +59,25 @@ export function useGameStore(matchId: string, playerId: string) {
       }
     });
 
+    connection.onReconnecting(() => {
+      if (!cancelled) {
+        setConnectionStatus("reconnecting");
+      }
+    });
+
+    connection.onClose(() => {
+      // Sunucu-otoriter maç mimarisi (02-architecture.md): "Disconnected" yalnızca
+      // istemcinin senkron olmadığını gösterir, maçın bittiği anlamına gelmez
+      // (bkz. 07-pages.md). cancelled ise bu, effect cleanup'ın bilinçli stop()'u
+      // — gerçek bir kopma değil, "disconnected" göstermez.
+      if (!cancelled) {
+        setConnectionStatus("disconnected");
+      }
+    });
+
     connection.onReconnected(() => {
-      connection.joinMatch(matchId, playerId).catch((err) => setError(String(err)));
+      setConnectionStatus("connected");
+      connection.joinMatch(matchId).catch((err) => setError(String(err)));
     });
 
     connection
@@ -58,15 +86,16 @@ export function useGameStore(matchId: string, playerId: string) {
         if (cancelled) {
           return;
         }
-        return connection.joinMatch(matchId, playerId).then(() => {
+        return connection.joinMatch(matchId).then(() => {
           if (!cancelled) {
-            setConnected(true);
+            setConnectionStatus("connected");
           }
         });
       })
       .catch((err) => {
         if (!cancelled) {
           setError(String(err));
+          setConnectionStatus("disconnected");
         }
       });
 
@@ -75,7 +104,12 @@ export function useGameStore(matchId: string, playerId: string) {
       connectionRef.current = null;
       connection.stop();
     };
-  }, [matchId, playerId]);
+  }, [matchId, playerId, reconnectAttempt]);
+
+  /** docs/08-page-content.md Bölüm 3.8: "Disconnected" durumunda kullanıcıya sunulan tek aksiyon. */
+  const reconnect = useCallback(() => {
+    setReconnectAttempt((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     if (!error) {
@@ -97,5 +131,14 @@ export function useGameStore(matchId: string, playerId: string) {
     connectionRef.current?.startVipMatchNow().catch((err) => setError(String(err)));
   }, []);
 
-  return { state, error, connected, lobbyTimeoutReached, leaveLobby, attackRegion, startVipMatchNow };
+  return {
+    state,
+    error,
+    connectionStatus,
+    lobbyTimeoutReached,
+    leaveLobby,
+    attackRegion,
+    startVipMatchNow,
+    reconnect,
+  };
 }

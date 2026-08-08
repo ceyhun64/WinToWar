@@ -3,7 +3,6 @@ using System.Text.Json;
 using api;
 using api.Services.Payments;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace api.Controllers;
@@ -23,7 +22,6 @@ namespace api.Controllers;
 public class PaymentsDevController : ControllerBase
 {
     private readonly PaymentService _paymentService;
-    private readonly PaymentDbContext _db;
     private readonly IPaymentProvider _paymentProvider;
     private readonly PaymentConfig _config;
     private readonly TimeProvider _timeProvider;
@@ -31,14 +29,12 @@ public class PaymentsDevController : ControllerBase
 
     public PaymentsDevController(
         PaymentService paymentService,
-        PaymentDbContext db,
         IPaymentProvider paymentProvider,
         IOptions<PaymentConfig> config,
         TimeProvider timeProvider,
         IWebHostEnvironment environment)
     {
         _paymentService = paymentService;
-        _db = db;
         _paymentProvider = paymentProvider;
         _config = config.Value;
         _timeProvider = timeProvider;
@@ -58,8 +54,8 @@ public class PaymentsDevController : ControllerBase
             return BadRequest();
         }
 
-        var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == id, cancellationToken);
-        if (invoice is null)
+        var details = await _paymentService.GetSimulationDetailsAsync(id, cancellationToken);
+        if (details is null)
         {
             return NotFound();
         }
@@ -69,9 +65,9 @@ public class PaymentsDevController : ControllerBase
             deliveryId = $"dev-{Guid.NewGuid():N}",
             type = BtcPayWebhookEventTypes.InvoiceSettled,
             timestamp = _timeProvider.GetUtcNow().ToUnixTimeSeconds(),
-            invoiceId = invoice.BtcPayInvoiceId,
+            invoiceId = details.Value.BtcPayInvoiceId,
             confirmations = _config.RequiredConfirmations,
-            paidAmountLtc = invoice.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture)
+            paidAmountLtc = details.Value.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture)
         });
 
         var signatureHeader = WebhookSignatureValidator.ComputeSignatureHeader(payload, _config.WebhookSecret);

@@ -56,7 +56,13 @@ export function RegionNode({
       onPointerMove={isDragSource ? onDragMove : undefined}
       onPointerUp={isDragSource ? onDragEnd : undefined}
       onPointerCancel={isDragSource ? onDragEnd : undefined}
-      className={draggable ? "cursor-grab outline-none touch-none" : "cursor-pointer outline-none touch-none"}
+      className={
+        // docs/04-style.md Bölüm 13: odak göstergesi hiçbir yerde tamamen kaldırılmaz —
+        // fare tıklamasında varsayılan tarayıcı halkası bastırılır, ama klavye ile
+        // (Tab) gelen odakta focus-visible ile görünür bir gösterge kalır.
+        (draggable ? "cursor-grab" : "cursor-pointer") +
+        " touch-none outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      }
     >
       <circle
         cx={region.x}

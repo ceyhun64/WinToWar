@@ -3,11 +3,14 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { LifeBuoy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PageHero } from "@/components/layout/PageHero";
+import { GameCard } from "@/components/layout/GameCard";
 import { API_BASE_URL } from "@/lib/game/api";
 
 function DestekForm() {
@@ -47,16 +50,17 @@ function DestekForm() {
 
   if (sent) {
     return (
-      <Card>
+      <GameCard>
         <CardContent className="text-sm">
           Talebiniz alındı. En kısa sürede destek e-postanız üzerinden dönüş yapılacaktır.
         </CardContent>
-      </Card>
+      </GameCard>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <GameCard>
+    <CardContent className="flex flex-col gap-4">
       {matchId ? (
         <p className="text-xs text-muted-foreground">
           Maç referansı:{" "}
@@ -66,12 +70,12 @@ function DestekForm() {
         </p>
       ) : null}
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-3">
         <Label htmlFor="subject">Konu</Label>
         <Input id="subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-3">
         <Label htmlFor="contactEmail">E-posta</Label>
         <Input
           id="contactEmail"
@@ -81,7 +85,7 @@ function DestekForm() {
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-3">
         <Label htmlFor="description">Açıklama</Label>
         <Textarea
           id="description"
@@ -96,7 +100,8 @@ function DestekForm() {
       </Button>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
+    </CardContent>
+    </GameCard>
   );
 }
 
@@ -104,12 +109,7 @@ function DestekForm() {
 export default function DestekPage() {
   return (
     <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-4 py-8">
-      <div>
-        <h1 className="text-lg font-semibold">Destek</h1>
-        <p className="text-sm text-muted-foreground">
-          Sorularınız veya ödeme anlaşmazlıklarınız için bize ulaşın.
-        </p>
-      </div>
+      <PageHero icon={LifeBuoy} title="Destek" subtitle="Sorularınız veya ödeme anlaşmazlıklarınız için bize ulaşın." />
       <Suspense fallback={null}>
         <DestekForm />
       </Suspense>
