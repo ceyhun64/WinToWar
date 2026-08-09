@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { PageHero } from "@/components/layout/PageHero";
 import { IllustrationPanel } from "@/components/layout/IllustrationPanel";
+import { GameCard } from "@/components/layout/GameCard";
+import { CardContent } from "@/components/ui/card";
 import { canonicalFor } from "@/lib/metadata";
 
 export const metadata: Metadata = {
@@ -71,32 +73,34 @@ const RULE_SECTIONS = [
 
 export default function KurallarPage() {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
+    <div className="mx-auto flex w-full min-h-0 max-w-7xl flex-1 flex-col gap-8 px-4 py-4">
       <PageHero
         icon={BookOpen}
         title="Kurallar"
         subtitle="Gerçek zamanlı, bölge ele geçirme temelli çok oyunculu strateji oyunu."
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {RULE_SECTIONS.map((section) => (
-          <IllustrationPanel
-            key={section.title}
-            icon={section.icon}
-            accent={section.accent}
-          >
-            <h2 className="mb-2 flex items-center gap-2 text-lg font-semibold">
-              <section.icon
-                className="size-4 shrink-0"
-                style={{ color: section.accent }}
-                aria-hidden="true"
-              />
-              {section.title}
-            </h2>
-            <p className="text-sm text-muted-foreground">{section.body}</p>
-          </IllustrationPanel>
-        ))}
-      </div>
+        <CardContent className="h-full overflow-y-auto">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {RULE_SECTIONS.map((section) => (
+              <IllustrationPanel
+                key={section.title}
+                icon={section.icon}
+                accent={section.accent}
+              >
+                <h2 className="mb-2 flex items-center gap-2 text-lg font-semibold">
+                  <section.icon
+                    className="size-4 shrink-0"
+                    style={{ color: section.accent }}
+                    aria-hidden="true"
+                  />
+                  {section.title}
+                </h2>
+                <p className="text-sm text-muted-foreground">{section.body}</p>
+              </IllustrationPanel>
+            ))}
+          </div>
+        </CardContent>
     </div>
   );
 }

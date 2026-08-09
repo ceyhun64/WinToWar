@@ -55,7 +55,7 @@ export function AdminGate({ children }: { children: React.ReactNode }) {
 
   if (!authorized) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-16">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-4 py-16">
         <Card className="w-full max-w-sm">
           <CardHeader>
             <CardTitle>Admin Girişi</CardTitle>

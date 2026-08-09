@@ -50,8 +50,8 @@ function DestekForm() {
 
   if (sent) {
     return (
-      <GameCard>
-        <CardContent className="text-sm">
+      <GameCard className="flex-1 min-h-0">
+        <CardContent className="h-full overflow-y-auto text-sm">
           Talebiniz alındı. En kısa sürede destek e-postanız üzerinden dönüş yapılacaktır.
         </CardContent>
       </GameCard>
@@ -59,8 +59,8 @@ function DestekForm() {
   }
 
   return (
-    <GameCard>
-    <CardContent className="flex flex-col gap-4">
+    <GameCard className="flex-1 min-h-0">
+    <CardContent className="flex h-full flex-col gap-4 overflow-y-auto">
       {matchId ? (
         <p className="text-xs text-muted-foreground">
           Maç referansı:{" "}
@@ -108,7 +108,7 @@ function DestekForm() {
 /** docs/07-pages.md `/destek`: iletişim formu + destek e-postası. */
 export default function DestekPage() {
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-4 py-8">
+    <div className="mx-auto flex w-full min-h-0 max-w-sm flex-1 flex-col gap-6 px-4 py-8">
       <PageHero icon={LifeBuoy} title="Destek" subtitle="Sorularınız veya ödeme anlaşmazlıklarınız için bize ulaşın." />
       <Suspense fallback={null}>
         <DestekForm />

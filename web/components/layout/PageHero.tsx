@@ -21,16 +21,11 @@ export function PageHero({
   accent?: string;
 }) {
   return (
-    <div className="flex items-center gap-4">
-      <span
-        className="flex size-12 shrink-0 items-center justify-center rounded-2xl"
-        style={{ backgroundColor: `${accent}22`, color: accent }}
-      >
-        <Icon className="size-6" aria-hidden="true" />
-      </span>
+    <div className="flex items-center justify-center gap-4">
+   
       <div className="flex flex-col gap-0.5">
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-        {subtitle ? <p className="text-sm text-muted-foreground">{subtitle}</p> : null}
+        <h1 className="text-2xl font-bold tracking-tight text-center">{title}</h1>
+        {subtitle ? <p className="text-sm text-muted-foreground text-center">{subtitle}</p> : null}
       </div>
     </div>
   );

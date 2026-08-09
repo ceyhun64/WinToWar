@@ -168,4 +168,39 @@
   html {
     @apply font-sans;
   }
+  /* docs/13-scroll-lock.md Bölüm 2.1: viewport (html/body) hiçbir route'ta
+     scroll container değil — hem dikey hem yatay. 100vh değil 100dvh (mobilde
+     adres çubuğu kaymasını önler). overscroll-behavior: iOS rubber-band'i engeller. */
+  html,
+  body {
+    height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+/* Kullanıcı talimatı: scrollbar arka planı transparan, buton (thumb) lacivert.
+   Kart içi (docs/13-scroll-lock.md) scroll alanları dahil tüm sayfada geçerli. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1e3a8a transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #1e3a8a;
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #1e40af;
 }

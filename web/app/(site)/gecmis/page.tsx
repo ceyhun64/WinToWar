@@ -59,7 +59,7 @@ function GecmisPageContent() {
               <EmptyDescription>Bir odaya katılın veya bakiyenizi yükleyin.</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button render={<Link href="/lobi" />}>Lobiye Git</Button>
+              <Button nativeButton={false} render={<Link href="/lobi" />}>Lobiye Git</Button>
             </EmptyContent>
           </Empty>
         </GameCard>

@@ -8,7 +8,8 @@ import { canonicalFor } from "@/lib/metadata";
 
 export const metadata: Metadata = {
   title: "Sıkça Sorulan Sorular — WinToWar",
-  description: "Yatırma/çekim süresi, komisyon hesaplama, maç iptali gibi sık sorulan sorular.",
+  description:
+    "Yatırma/çekim süresi, komisyon hesaplama, maç iptali gibi sık sorulan sorular.",
   ...canonicalFor("/sss"),
 };
 
@@ -30,7 +31,8 @@ const FAQ_ITEMS = [
   },
   {
     question: "Para çekme talebimin durumunu nereden görürüm?",
-    answer: "/cuzdan sayfasındaki 'Para Çek' bölümünden en son talebinizin durumunu görebilirsiniz.",
+    answer:
+      "/cuzdan sayfasındaki 'Para Çek' bölümünden en son talebinizin durumunu görebilirsiniz.",
   },
 ];
 
@@ -52,22 +54,32 @@ const faqJsonLd = {
 
 export default function SssPage() {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
+    <div className="mx-auto flex w-full min-h-0 max-w-7xl flex-1 flex-col gap-8 px-4 py-4">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       <PageHero icon={HelpCircle} title="Sıkça Sorulan Sorular" />
-      <div className="flex flex-col gap-4">
-        {FAQ_ITEMS.map((item) => (
-          <GameCard key={item.question}>
-            <CardHeader>
-              <CardTitle>{item.question}</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">{item.answer}</CardContent>
-          </GameCard>
-        ))}
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Sorunun cevabını bulamadın mı? <Link href="/destek" className="underline">Destek ile iletişime geç</Link>
-      </p>
+        <CardContent className="flex h-full flex-col gap-6 overflow-y-auto">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {FAQ_ITEMS.map((item) => (
+              <GameCard key={item.question}>
+                <CardHeader>
+                  <CardTitle>{item.question}</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground">
+                  {item.answer}
+                </CardContent>
+              </GameCard>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Sorunun cevabını bulamadın mı?{" "}
+            <Link href="/destek" className="underline">
+              Destek ile iletişime geç
+            </Link>
+          </p>
+        </CardContent>
     </div>
   );
 }

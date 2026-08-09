@@ -72,7 +72,7 @@ export default function KayitPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-16">
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-4 px-4 py-6 sm:gap-6 sm:py-16">
       <PageHero icon={UserPlus} title="Kayıt Ol" subtitle="Birkaç saniyede hesabını oluştur." accent="#F5B942" />
 
       <GameCard>

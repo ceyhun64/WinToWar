@@ -69,7 +69,7 @@ function ProfilPageContent() {
               <EmptyDescription>Bir savaşa katıl, ilk zaferini burada gör.</EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
-              <Button render={<Link href="/lobi" />}>Lobiye Git</Button>
+              <Button nativeButton={false} render={<Link href="/lobi" />}>Lobiye Git</Button>
             </EmptyContent>
           </Empty>
         </GameCard>

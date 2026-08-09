@@ -72,17 +72,17 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
 
   if (CHROMELESS_PATHS.includes(pathname)) {
-    return <main className="flex min-w-0 flex-1 flex-col">{children}</main>;
+    return <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main>;
   }
 
   const minimal = MINIMAL_HEADER_PATHS.includes(pathname);
 
   if (isDarkThemePath(pathname)) {
     return (
-      <div className="dark flex min-h-dvh flex-1 flex-col text-foreground">
+      <div className="dark flex min-h-0 flex-1 flex-col text-foreground">
         <PageBackground />
         <Header minimal={minimal} />
-        <main className="flex flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
         <Footer />
       </div>
     );
@@ -91,7 +91,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   return (
     <>
       <Header minimal={minimal} />
-      <main className="flex flex-1 flex-col">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
       <Footer />
     </>
   );

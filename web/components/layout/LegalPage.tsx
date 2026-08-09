@@ -23,10 +23,10 @@ export function LegalPage({
   children?: ReactNode;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
+    <div className="mx-auto flex w-full min-h-0 max-w-7xl flex-1 flex-col gap-8 px-4 py-6">
       <PageHero icon={icon} title={title} accent="#94A3B8" />
-      <GameCard>
-        <CardContent className="flex flex-col gap-6 text-sm text-muted-foreground">
+      <GameCard className="flex-1 min-h-0">
+        <CardContent className="flex h-full flex-col gap-6 overflow-y-auto text-sm text-muted-foreground">
           {children ?? (
             <p>
               İçerik yakında eklenecektir. Bu metin, müşteriden veya hukuk danışmanından gelecek resmi
