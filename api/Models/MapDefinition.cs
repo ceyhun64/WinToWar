@@ -13,6 +13,19 @@ public class MapRegionDefinition
     public double X { get; init; }
     public double Y { get; init; }
     public List<string> Neighbors { get; init; } = new();
+
+    /// <summary>
+    /// docs/14-game-map-redesign.md Bölüm 2/3: bölgenin gerçek harita şekli — SVG
+    /// polygon köşe noktaları. X/Y bu şeklin merkez noktasıdır, geometri yoksa
+    /// harita çizilemez (Bölüm 3 "geometri bütünlüğü" — daire/node görünümü yasak).
+    /// </summary>
+    public required MapRegionGeometry Geometry { get; init; }
+}
+
+public class MapRegionGeometry
+{
+    public required string Type { get; init; }
+    public required List<double[]> Points { get; init; }
 }
 
 public class MapDefinition

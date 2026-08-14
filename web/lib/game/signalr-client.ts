@@ -1,13 +1,16 @@
 import * as signalR from "@microsoft/signalr";
 import type { PaymentConfirmedEvent } from "@/lib/payments/types";
 import { ensureSessionLoaded, getAccessToken } from "@/lib/identity";
-import type { MatchStateDto } from "./types";
+import type { ArmyArrivedEvent, ArmyClashedEvent, ArmyDepartedEvent, MatchStateDto } from "./types";
 
 const HUB_URL = process.env.NEXT_PUBLIC_API_HUB_URL ?? "http://localhost:5019/hub/game";
 
 export type MatchStateHandler = (state: MatchStateDto) => void;
 export type ActionErrorHandler = (message: string) => void;
 export type PaymentConfirmedHandler = (event: PaymentConfirmedEvent) => void;
+export type ArmyDepartedHandler = (event: ArmyDepartedEvent) => void;
+export type ArmyClashedHandler = (event: ArmyClashedEvent) => void;
+export type ArmyArrivedHandler = (event: ArmyArrivedEvent) => void;
 
 /**
  * SignalR bağlantı yönetimi: bağlan/yeniden bağlan/mesaj dinleme.
@@ -48,6 +51,21 @@ export class GameConnection {
   /** Bölüm 3.1 (docs/05-payment.md): ödeme onaylandığında sunucudan gelen event. */
   onPaymentConfirmed(handler: PaymentConfirmedHandler) {
     this.connection.on("PaymentConfirmed", handler);
+  }
+
+  /** docs/15-asker-hareketi-performans.md Bölüm 6.3: yeni bir sevkiyat başladığında. */
+  onArmyDeparted(handler: ArmyDepartedHandler) {
+    this.connection.on("ArmyDeparted", handler);
+  }
+
+  /** Bölüm 6.3: iki sevkiyat karşılaştığında. */
+  onArmyClashed(handler: ArmyClashedHandler) {
+    this.connection.on("ArmyClashed", handler);
+  }
+
+  /** Bölüm 6.3: bir sevkiyat hedefine ulaştığında. */
+  onArmyArrived(handler: ArmyArrivedHandler) {
+    this.connection.on("ArmyArrived", handler);
   }
 
   onReconnected(handler: () => void) {
@@ -93,10 +111,10 @@ export class GameConnection {
   }
 
   /**
-   * Sürükle-bırak ile gönderim (docs/03-game-rules.md Bölüm 6/15): toRegionId,
-   * fromRegionId'nin doğrudan komşusu olmalı. Asker sayısı client'tan gönderilmez,
-   * sunucu kaynak bölgenin mevcut askerinden GameConfig.MinGarrisonPerSend
-   * çıkararak kendisi hesaplar.
+   * Sürükle-bırak ile gönderim (docs/03-game-rules.md Bölüm 3/6/15): toRegionId,
+   * haritadaki herhangi bir bölge olabilir (komşuluk zorunluluğu yok, müşteri kararı).
+   * Asker sayısı client'tan gönderilmez, sunucu kaynak bölgenin GÜNCEL asker sayısının
+   * TAMAMINI gönderir (GameConfig.MinGarrisonPerSend = 0, kaynakta hiçbir şey kalmaz).
    */
   async attackRegion(fromRegionId: string, toRegionId: string) {
     await this.connection.invoke("AttackRegion", fromRegionId, toRegionId);

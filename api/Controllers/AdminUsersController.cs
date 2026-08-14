@@ -5,7 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace api.Controllers;
 
-public record AdminUserResponse(string PlayerId, string BalanceUsd, List<PaymentInvoiceDto> Invoices);
+public record AdminUserResponse(
+    string PlayerId,
+    string BalanceUsd,
+    List<PaymentInvoiceDto> Invoices
+);
 
 /// <summary>
 /// docs/07-pages.md `/admin/kullanicilar`: kullanıcı arama, bakiye görüntüleme.
@@ -29,10 +33,19 @@ public class AdminUsersController : ControllerBase
     }
 
     [HttpGet("{playerId}")]
-    public async Task<ActionResult<AdminUserResponse>> Get(string playerId, CancellationToken cancellationToken)
+    public async Task<ActionResult<AdminUserResponse>> Get(
+        string playerId,
+        CancellationToken cancellationToken
+    )
     {
         var balance = await _walletService.GetBalanceAsync(playerId, cancellationToken);
         var invoices = await _paymentService.GetInvoiceHistoryAsync(playerId, cancellationToken);
-        return Ok(new AdminUserResponse(playerId, balance.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), invoices));
+        return Ok(
+            new AdminUserResponse(
+                playerId,
+                balance.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+                invoices
+            )
+        );
     }
 }

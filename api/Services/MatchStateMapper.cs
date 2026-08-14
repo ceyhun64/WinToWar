@@ -66,15 +66,7 @@ public static class MatchStateMapper
             }).ToList(),
             Armies = match.Armies
                 .Where(a => visibleRegionIds is null || visibleRegionIds.Contains(a.FromRegionId) || visibleRegionIds.Contains(a.ToRegionId))
-                .Select(a => new ArmyDto
-                {
-                    Id = a.Id,
-                    OwnerId = a.OwnerId,
-                    SoldierCount = a.SoldierCount,
-                    FromRegionId = a.FromRegionId,
-                    ToRegionId = a.ToRegionId,
-                    ArrivesInSeconds = Math.Max(0, (int)(a.ArrivesAtUtc - now).TotalSeconds)
-                }).ToList(),
+                .Select(ToArmyDto).ToList(),
             StartedAtUtc = match.StartedAtUtc,
             CompletedAtUtc = match.CompletedAtUtc
         };
@@ -107,6 +99,22 @@ public static class MatchStateMapper
         return visible;
     }
 
+    /// <summary>
+    /// docs/06-coding-standards.md "Mapping tek yerde yapılır": Army -> ArmyDto dönüşümü
+    /// hem tam MatchState snapshot'ında (yukarıda) hem de GameHub'ın ArmyDeparted event'inde
+    /// aynı şekilde gerekiyor; tekrar yazılmak yerine buradan çağrılır.
+    /// </summary>
+    public static ArmyDto ToArmyDto(Army army) => new()
+    {
+        Id = army.Id,
+        OwnerId = army.OwnerId,
+        SoldierCount = army.SoldierCount,
+        FromRegionId = army.FromRegionId,
+        ToRegionId = army.ToRegionId,
+        DepartedAtUtc = army.DepartedAtUtc,
+        ArrivesAtUtc = army.ArrivesAtUtc
+    };
+
     public static MapDto ToMapDto(MapDefinition map)
     {
         return new MapDto
@@ -117,7 +125,8 @@ public static class MatchStateMapper
                 Name = r.Name,
                 X = r.X,
                 Y = r.Y,
-                NeighborIds = r.Neighbors.ToList()
+                NeighborIds = r.Neighbors.ToList(),
+                Geometry = new MapRegionGeometryDto { Type = r.Geometry.Type, Points = r.Geometry.Points }
             }).ToList()
         };
     }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GameConnection } from "./signalr-client";
-import type { MatchStateDto } from "./types";
+import type { ArmyArrivedEvent, ArmyClashedEvent, ArmyDepartedEvent, MatchStateDto } from "./types";
 
 /**
  * docs/07-pages.md Sayfa Bazlı State Matrisi (/game/[matchId]): Connecting →
@@ -26,6 +26,13 @@ export function useGameStore(matchId: string, playerId: string) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [lobbyTimeoutReached, setLobbyTimeoutReached] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  // docs/15-asker-hareketi-performans.md Bölüm 6.3: MatchState resync'e ek olarak,
+  // animasyon katmanının (useArmyAnimation) anında tepki verebilmesi için ayrı
+  // event'ler — her yeni event yeni bir obje referansı olduğundan tüketen taraf
+  // (useArmyAnimation) bunu bir useEffect bağımlılığı olarak kullanabilir.
+  const [armyDeparted, setArmyDeparted] = useState<ArmyDepartedEvent | null>(null);
+  const [armyClashed, setArmyClashed] = useState<ArmyClashedEvent | null>(null);
+  const [armyArrived, setArmyArrived] = useState<ArmyArrivedEvent | null>(null);
   const connectionRef = useRef<GameConnection | null>(null);
 
   useEffect(() => {
@@ -56,6 +63,24 @@ export function useGameStore(matchId: string, playerId: string) {
     connection.onLobbyTimeoutReached(() => {
       if (!cancelled) {
         setLobbyTimeoutReached(true);
+      }
+    });
+
+    connection.onArmyDeparted((event) => {
+      if (!cancelled) {
+        setArmyDeparted(event);
+      }
+    });
+
+    connection.onArmyClashed((event) => {
+      if (!cancelled) {
+        setArmyClashed(event);
+      }
+    });
+
+    connection.onArmyArrived((event) => {
+      if (!cancelled) {
+        setArmyArrived(event);
       }
     });
 
@@ -136,6 +161,9 @@ export function useGameStore(matchId: string, playerId: string) {
     error,
     connectionStatus,
     lobbyTimeoutReached,
+    armyDeparted,
+    armyClashed,
+    armyArrived,
     leaveLobby,
     attackRegion,
     startVipMatchNow,

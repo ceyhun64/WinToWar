@@ -1,13 +1,18 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Menu as MenuIcon } from "lucide-react";
 import { ActionPanel } from "@/components/game/ActionPanel";
+import { DevFpsOverlay } from "@/components/game/DevFpsOverlay";
 import { GameMap } from "@/components/game/GameMap";
 import { Hud } from "@/components/game/Hud";
+import { TerritoryControlBar } from "@/components/game/TerritoryControlBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetFooter, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { getGameConfig, getMap } from "@/lib/game/api";
 import { useGameStore } from "@/lib/game/store";
 import type { GameConfigDto, MapDto } from "@/lib/game/types";
@@ -25,6 +30,11 @@ export default function GamePage({ params }: GamePageProps) {
   const [gameConfig, setGameConfig] = useState<GameConfigDto | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  // docs/17-oyun-ici-ui-güclendirme.md Bölüm 16 "Tutorial": sabit yardım metni yalnızca
+  // oyuncu bu maçta henüz hiç asker göndermediyse gösterilir — ilk gönderimden sonra
+  // harita ekranı gereksiz metinden arınır (sürekli görünen bir talimat yerine).
+  const [hasAttacked, setHasAttacked] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     setPlayerId(window.localStorage.getItem(`wintowar:match:${matchId}:playerId`));
@@ -78,10 +88,61 @@ export default function GamePage({ params }: GamePageProps) {
   const winnerNames = state.winners
     .map((id) => state.players.find((p) => p.id === id)?.name ?? "Bilinmeyen")
     .join(", ");
+  const myPlayer = state.players.find((p) => p.id === playerId);
+  // docs/03-game-rules.md Bölüm 8 "Elenen oyuncunun deneyimi": elenen oyuncu maçtan
+  // atılmaz, salt-okunur biçimde maçın geri kalanını izler — aksiyon almaya çalışırsa
+  // sunucu zaten reddeder (GameHub.HandleAction "Elendiniz, aksiyon alamazsınız."), ama
+  // bunu beklemeden burada da açıkça bildirilir (docs/17 Bölüm 9 "Defeat" geri bildirimi).
+  const isEliminatedButWatching = state.status === "Playing" && (myPlayer?.isEliminated ?? false);
+
+  function handleAttack(fromRegionId: string, toRegionId: string) {
+    if (!hasAttacked) setHasAttacked(true);
+    store.attackRegion(fromRegionId, toRegionId);
+  }
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 px-4 py-4">
-      <Hud state={state} myPlayerId={playerId} gameConfig={gameConfig} />
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-4">
+      <DevFpsOverlay />
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <Hud state={state} myPlayerId={playerId} gameConfig={gameConfig} />
+        </div>
+        {/* docs/17-oyun-ici-ui-güclendirme.md Bölüm 17 "Pause/Menu": bu gerçek zamanlı,
+            sunucu-otoriter maçta klasik bir "Duraklat/Yeniden Başlat" kavramı yok (maç
+            durdurulamaz, para riski taşıyan bir maç sıfırlanamaz) ve docs/03-game-rules.md
+            Bölüm 10.1 "Pes etme (Surrender)"yi müşteri kararıyla kapsam dışı bırakmış —
+            o yüzden burada ayrı bir "Pes Et" aksiyonu YOK. Menü yalnızca zaten var olan,
+            state değiştirmeyen kısayolları (kurallar, bağlantı durumu, sekmeden ayrılma)
+            tek bir yerde toplar. */}
+        <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+          <SheetTrigger render={<Button variant="outline" size="icon-sm" aria-label="Menü" />}>
+            <MenuIcon className="size-4" aria-hidden="true" />
+          </SheetTrigger>
+          <SheetContent side="right" className="gap-0">
+            <div className="flex flex-col gap-1.5 p-6">
+              <SheetTitle>Menü</SheetTitle>
+              <p className="text-sm text-muted-foreground">
+                Bağlantı:{" "}
+                {store.connectionStatus === "connected"
+                  ? "Bağlı"
+                  : store.connectionStatus === "reconnecting"
+                    ? "Yeniden bağlanıyor…"
+                    : store.connectionStatus === "disconnected"
+                      ? "Bağlantı kesildi"
+                      : "Bağlanıyor…"}
+              </p>
+            </div>
+            <SheetFooter>
+              <Button nativeButton={false} variant="outline" render={<Link href="/kurallar" />}>
+                Kurallar
+              </Button>
+              <Button nativeButton={false} render={<Link href="/lobi" />}>
+                Maçtan Çık
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      </div>
 
       {/* docs/08-page-content.md Bölüm 3.8: bağlantı durumu içeriği — sunucu-otoriter
           mimaride bu bant/uyarı yalnızca istemcinin senkron olmadığını gösterir,
@@ -162,32 +223,75 @@ export default function GamePage({ params }: GamePageProps) {
         </Card>
       ) : null}
 
+      {/* docs/17-oyun-ici-ui-güclendirme.md Bölüm 9 "Victory/Defeat": kazanma ve kaybetme
+          net biçimde ayrılır, her ikisinde de bir sonraki adım için açık bir aksiyon
+          (maç özeti/ödül dağılımı — zaten var olan `/mac/[matchId]`, yeni bir maç) sunulur.
+          Sahte bir ödül/XP/coin sistemi UYDURULMAZ (proje henüz bu sistemlere sahip değil) —
+          gerçek ödeme sonucu zaten `/mac/[matchId]`'de (payout özeti) gösteriliyor. */}
       {state.status === "Completed" ? (
         <Card>
-          <CardContent className="text-center text-sm font-medium">
-            {isWinner ? "Kazandınız!" : `Kazanan${state.winners.length > 1 ? "lar" : ""}: ${winnerNames}`}
+          <CardContent className="flex flex-col items-center gap-3 py-2 text-center">
+            <p className="text-lg font-semibold">
+              {isWinner
+                ? "Kazandınız!"
+                : `Kaybettiniz — Kazanan${state.winners.length > 1 ? "lar" : ""}: ${winnerNames}`}
+            </p>
+            {state.room.type !== "Practice" ? (
+              <p className="text-sm text-muted-foreground">
+                {isWinner ? "Ödülünüz bakiyenize eklendi." : "Havuzdaki payınız kazananlara dağıtıldı."}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button nativeButton={false} variant="outline" render={<Link href={`/mac/${matchId}`} />}>
+                Maç Özetini Gör
+              </Button>
+              <Button nativeButton={false} render={<Link href="/lobi" />}>
+                {isWinner ? "Yeni Maça Başla" : "Tekrar Dene"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_320px]">
-        <GameMap
-          map={map}
-          state={state}
-          myPlayerId={playerId}
-          selectedRegionId={selectedRegionId}
-          movementDurationSeconds={gameConfig.movementDurationSeconds}
-          onSelectRegion={setSelectedRegionId}
-          onAttack={store.attackRegion}
-        />
-        <ActionPanel
-          map={map}
-          state={state}
-          myPlayerId={playerId}
-          selectedRegionId={selectedRegionId}
-          gameConfig={gameConfig}
-        />
-      </div>
+      {isEliminatedButWatching ? (
+        <div className="rounded-2xl border border-border bg-muted/40 px-4 py-2 text-center text-sm text-muted-foreground">
+          Elendiniz — maçın geri kalanını izleyebilir, kimin kazanacağını görebilirsiniz.
+        </div>
+      ) : null}
+
+      {/* docs/16-state.io-gorsel-referans.md Bölüm 1.1: haritanın hemen üstünde, gerçek
+          zamanlı toprak oranı göstergesi — HUD'un bir parçası ama ayrı bir bileşen. */}
+      <TerritoryControlBar state={state} myPlayerId={playerId} />
+
+      {/* docs/14-game-map-redesign.md Bölüm 0/6: harita artık kalıcı bir sağ sidebar'la
+          bölünmüyor — ekranın ana odağı, container genişliğinin tamamını kullanır.
+          Seçili bölge bilgisi yalnızca bir bölge seçiliyken açılan kompakt bir
+          bottom-sheet overlay'de gösterilir (bkz. ActionPanel.tsx). */}
+      <GameMap
+        map={map}
+        state={state}
+        myPlayerId={playerId}
+        selectedRegionId={selectedRegionId}
+        armyDeparted={store.armyDeparted}
+        armyClashed={store.armyClashed}
+        armyArrived={store.armyArrived}
+        onSelectRegion={setSelectedRegionId}
+        onAttack={handleAttack}
+      />
+      {!hasAttacked ? (
+        <p className="text-center text-xs text-muted-foreground">
+          Bilgi görmek için bir bölgeye dokunun. Asker göndermek için kendi bölgenizi
+          haritadaki herhangi bir bölgeye sürükleyip bırakın.
+        </p>
+      ) : null}
+      <ActionPanel
+        map={map}
+        state={state}
+        myPlayerId={playerId}
+        selectedRegionId={selectedRegionId}
+        gameConfig={gameConfig}
+        onClose={() => setSelectedRegionId(null)}
+      />
 
       {store.error ? (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-md border border-destructive/40 bg-card px-4 py-2 text-sm text-destructive shadow-sm">

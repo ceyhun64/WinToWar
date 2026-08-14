@@ -20,7 +20,8 @@ public static class GameConfig
     // 🛠️ Standart oda: likidite riski gerekçesiyle 12 değil 4 oyunculu (Bölüm 2.1).
     public const int StandardRoomPlayerCount = 4;
     public const bool StandardRoomFogOfWar = false;
-    public const int StandardRoomGreyRegionDefenseCount = 1;
+    // 🔒 Müşteri kararı: sahipsiz/nötr bölgelerin başlangıç savunması artık 10 (bkz. Bölüm 4).
+    public const int StandardRoomGreyRegionDefenseCount = 10;
     // 🔒 Giriş ücreti: sabit $1 USD (docs/03-game-rules.md Bölüm 2.1 / docs/05-payment.md Bölüm 1.1).
     public const decimal StandardRoomEntryFeeUsd = 1.00m;
 
@@ -33,7 +34,8 @@ public static class GameConfig
     // 🛠️ Practice: tek paylaşılan otomatik eşleşme kuyruğu (Bölüm 7).
     public const int PracticeRoomDefaultPlayerCount = 2;
     public const int PracticeLobbyFillTimeoutSeconds = 60;
-    public const int PracticeGreyRegionDefenseCount = 1;
+    // 🔒 Müşteri kararı: sahipsiz/nötr bölgelerin başlangıç savunması artık 10 (bkz. Bölüm 4).
+    public const int PracticeGreyRegionDefenseCount = 10;
     public const bool PracticeFogOfWar = false;
 
     // ---- Lobi ----
@@ -49,36 +51,78 @@ public static class GameConfig
     public const int ResultScreenDurationSeconds = 15;
 
     // ---- Ekonomi ----
-    // 🔒 Ana Kale üretimi: 10 saniyede 4 asker, fethedilen her bölge +1 asker/10sn.
-    public const int BaseProductionPerInterval = 4;
-    public const int ProductionIntervalSeconds = 10;
-    public const int ProductionBonusPerRegion = 1;
+    // 🔒 Müşteri kararı: "kale gibi bir alan olmayacak" — hiçbir bölge diğerlerinden
+    // ayrıcalıklı değildir. Sahip olunan HER bölge (ilk verilen toprak + fethedilen
+    // topraklar, hepsi eşit) saniyede 1 asker üretir (bkz. docs/03-game-rules.md Bölüm 4).
+    public const int BaseProductionPerInterval = 1;
+    public const int ProductionIntervalSeconds = 1;
 
-    public const int GameTickMs = 1000;
+    // 🔒 Müşteri kararı: sahipsiz/nötr bölge iyileşmesi "her saniye +1" (bkz. Bölüm 4
+    // "kendiliğinden iyileşme") — üretimle (ProductionIntervalSeconds) aynı değere sahip
+    // olsalar da kasıtlı olarak AYRI bir sabittir (iki büyüme oranı kasıtlı farklıdır,
+    // biri diğerine bağlı değişmemeli).
+    public const int NeutralRegenIntervalSeconds = 1;
 
-    public const int StartingSoldierCount = 0;
+    // 🛠️ Kullanıcı talimatı: sevkiyat gruplarının (docs/19-army.md Dispatch) gerçek
+    // ayrılışı yalnızca bu tick'te işlendiğinden, tick aralığı sevkiyatlar arasındaki
+    // görünür "adım" süresini belirliyordu (1000ms'de bariz bir sıçrama hissi
+    // veriyordu) — daha akıcı, daha sık gözlemlenebilir kademeli çıkış için düşürüldü.
+    // Production/nötr iyileşme kendi ayrı interval sabitleriyle (yukarıda) gerçek geçen
+    // zamana göre çalıştığından bu değişiklikten etkilenmez, yalnızca daha sık kontrol edilirler.
+    public const int GameTickMs = 250;
+
+    // 🔒 Müşteri kararı: oyuncuların başlangıç (Ana Kale) bölgesi artık 0 değil 10 askerle başlar.
+    public const int StartingSoldierCount = 10;
 
     // ---- Hareket ----
     // 🛠️ Hareket anlık değil, sabit süre (❓ müşteriye doğrulatılmalı, Bölüm 6).
     public const int MovementDurationSeconds = 5;
 
-    // 🛠️ state.io incelemesi sonrası eklendi (Bölüm 6/15): sürükle-bırak gönderiminde
-    // client asker sayısı belirtmez, sunucu kaynak bölgenin mevcut askerinden bu kadarını
-    // her zaman garrison olarak bırakır, kalanının tamamını gönderir (❓ doğrulanmalı).
-    public const int MinGarrisonPerSend = 1;
+    // 🔒 Müşteri kararı (önceki ❓ 1 varsayımının yerini aldı): sürükle-bırak gönderiminde
+    // kaynak bölgenin GÜNCEL asker sayısının TAMAMI gönderilir, kaynakta hiçbir asker
+    // garrison olarak bırakılmaz (0). Müşterinin verdiği somut örnek: "20 birikti, 10
+    // savunmalı yere saldırınca orada 20-10=10 askerim olmalı" — eski `1` değeri bu
+    // hesaba bir asker eksik veriyordu (19-10=9), ayrıca kaynağı sürekli 1'de kilitleyip
+    // art arda saldırı göndermeyi imkansız kılıyordu ("bölge sürüklenemez" — soldierCount
+    // hep tam MinGarrisonPerSend'e eşit kalıyordu). `docs/03-game-rules.md` Bölüm 5'teki
+    // "+2 Asker Kuralı" (hedef bölgede kalan garrison = gönderilen - savunma) bu
+    // değişiklikten etkilenmez — o kural her zaman HEDEFTEKİ garrison'u tarif eder,
+    // kaynakta bırakılan miktarı değil.
+    public const int MinGarrisonPerSend = 0;
+
+    // 🛠️ docs/19-army.md: bir AttackRegion çağrısı artık kaynaktan anında değil,
+    // gerçek geçen zamana göre kademeli gruplar (batch) halinde ayrılır — "80-150ms
+    // aralığını test edebilirsin" (§4) aralığının ortası.
+    public const int DispatchBatchIntervalMs = 120;
+
+    // 🛠️ docs/19-army.md §18'deki "visual unit" ölçekleme tablosunun aynısı, burada
+    // toplam sevkiyat miktarına göre kaç GRUP halinde (tek tek asker değil) kademeli
+    // ayrılacağını belirlemek için kullanılır — büyük bir orduyu tek tek 100ms
+    // aralıklarla göndermek (ör. 200 asker × 120ms = 24 sn) oyunu ağırlaştırır (§4
+    // "çok yavaş olursa gameplay ağırlaşır"); bunun yerine grup SAYISI ölçeklenir,
+    // her grup orantılı bir asker payı taşır.
+    public const int DispatchBatchScaleTinyMax = 5;
+    public const int DispatchBatchScaleTinyBatches = 3;
+    public const int DispatchBatchScaleSmallMax = 20;
+    public const int DispatchBatchScaleSmallBatches = 8;
+    public const int DispatchBatchScaleMediumMax = 100;
+    public const int DispatchBatchScaleMediumBatches = 15;
+    public const int DispatchBatchScaleLargeBatches = 25;
 
     // ---- Maç sonu / terk etme ----
     // 🛠️ Süre sınırı yok — maç yalnızca tek oyuncu kalınca biter (❓ Bölüm 8).
     public const int AbandonmentTimeoutSeconds = 90;
 
-    // 🛠️ Turtling'i (sonsuza kadar biriktirme) anlamsız kılan Ana Kale asker tavanı
-    // (Bölüm 4/12, state.io incelemesi sonrası eklendi, ❓ doğrulanmalı). Üretim bu
-    // sınıra ulaşınca durur, sınırın altına inince otomatik devam eder.
+    // 🛠️ Turtling'i (sonsuza kadar biriktirme) anlamsız kılan asker tavanı — artık
+    // Ana Kale özelinde değil, üretim yapan HER bölge için ayrı ayrı uygulanır (bölge
+    // bazlı üretime geçişle birlikte, bkz. Bölüm 4). Üretim bir bölgenin kendi sınırına
+    // ulaşınca durur, sınırın altına inince (asker gönderilince) otomatik devam eder.
     public const int MaxAccumulatedTroops = 200;
 
-    // 🛠️ Saldırı yalnızca doğrudan komşu bölgeye yapılabilir — state.io'nun serbest-hedef
-    // mekaniğinden bilinçli bir sapma (Bölüm 3/12/15-D.1, ❓ doğrulanmalı).
-    public const bool AttackAdjacencyOnly = true;
+    // 🔒 Müşteri kararı (docs/03-game-rules.md Bölüm 3/14 madde 8/15-D.1'deki açık ❓
+    // sorusunu çözdü): saldırı artık komşulukla sınırlı değil, gerçek state.io'daki gibi
+    // haritadaki herhangi bir bölgeye doğrudan gönderim yapılabilir.
+    public const bool AttackAdjacencyOnly = false;
 
     // ---- Güvenlik ----
     // 🛠️ Oyuncu başına saniyede en fazla aksiyon sayısı (spam koruması, Bölüm 11).

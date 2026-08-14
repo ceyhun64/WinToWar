@@ -15,6 +15,14 @@ public class MapRegionDto
     public double X { get; init; }
     public double Y { get; init; }
     public required List<string> NeighborIds { get; init; }
+    public required MapRegionGeometryDto Geometry { get; init; }
+}
+
+/// <summary>docs/14-game-map-redesign.md Bölüm 2: bölge şeklinin SVG polygon karşılığı.</summary>
+public class MapRegionGeometryDto
+{
+    public required string Type { get; init; }
+    public required List<double[]> Points { get; init; }
 }
 
 /// <summary>
@@ -33,7 +41,6 @@ public class GameConfigDto
     public required int PracticeRoomDefaultPlayerCount { get; init; }
     public required int BaseProductionPerInterval { get; init; }
     public required int ProductionIntervalSeconds { get; init; }
-    public required int ProductionBonusPerRegion { get; init; }
     public required int MovementDurationSeconds { get; init; }
     public required int LobbyFillTimeoutSeconds { get; init; }
     public required int PracticeLobbyFillTimeoutSeconds { get; init; }
@@ -57,7 +64,6 @@ public class GameConfigDto
         PracticeRoomDefaultPlayerCount = GameConfig.PracticeRoomDefaultPlayerCount,
         BaseProductionPerInterval = GameConfig.BaseProductionPerInterval,
         ProductionIntervalSeconds = GameConfig.ProductionIntervalSeconds,
-        ProductionBonusPerRegion = GameConfig.ProductionBonusPerRegion,
         MovementDurationSeconds = GameConfig.MovementDurationSeconds,
         LobbyFillTimeoutSeconds = GameConfig.LobbyFillTimeoutSeconds,
         PracticeLobbyFillTimeoutSeconds = GameConfig.PracticeLobbyFillTimeoutSeconds,

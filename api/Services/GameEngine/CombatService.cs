@@ -80,16 +80,23 @@ public class CombatService
 
         if (previousOwnerId is not null)
         {
-            HandlePreviousOwnerLoss(match, targetRegion, previousOwnerId, _eventLogWriter);
+            HandlePreviousOwnerLoss(match, previousOwnerId, _eventLogWriter);
         }
 
         return new AttackResult(Captured: true);
     }
 
-    /// <summary>Bir oyuncu, yalnızca KENDİ orijinal başlangıç kalesi ele geçirildiğinde elenir.</summary>
-    private static void HandlePreviousOwnerLoss(Match match, Region targetRegion, string previousOwnerId, MatchEventLogWriter eventLogWriter)
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 8 (müşteri kararıyla güncellendi — "kale gibi bir alan
+    /// olmayacak"): artık tek bir ayrıcalıklı "orijinal başlangıç bölgesi" kaybı elemiyor —
+    /// bir oyuncu, elindeki bölge sayısı SIFIRA düştüğünde elenir. `targetRegion.OwnerId`
+    /// bu noktada zaten yeni sahibe güncellenmiş olduğundan (bkz. CaptureRegion), buradaki
+    /// kontrol otomatik olarak "önceki sahibin artık hiç bölgesi kalmadı mı" sorusunu yanıtlar.
+    /// </summary>
+    private static void HandlePreviousOwnerLoss(Match match, string previousOwnerId, MatchEventLogWriter eventLogWriter)
     {
-        if (targetRegion.OriginalOwnerId != previousOwnerId)
+        var stillOwnsAnyRegion = match.Regions.Values.Any(r => r.OwnerId == previousOwnerId);
+        if (stillOwnsAnyRegion)
         {
             return;
         }

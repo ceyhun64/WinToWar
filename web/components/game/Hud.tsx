@@ -1,6 +1,6 @@
 "use client";
 
-import { colorForSlot } from "@/lib/game/colors";
+import { playerFillColor } from "@/lib/game/colors";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import type { GameConfigDto, MatchStateDto } from "@/lib/game/types";
@@ -12,18 +12,15 @@ interface HudProps {
 }
 
 /**
- * docs/03-game-rules.md Bölüm 4: ProductionPerInterval = BaseProduction +
- * ConqueredRegionCount × BonusPerRegion — ConqueredRegionCount ev/başlangıç
- * kalesi HARİÇ elde tutulan bölge sayısıdır. Hâlâ aktif (elenmemiş) bir oyuncu
- * her zaman kendi evini elinde tuttuğundan (bkz. CombatService.HandlePreviousOwnerLoss
- * — ev kaybedilince oyuncu anında elenir), toplam bölge sayısından 1 çıkarmak bu
- * sayıya eşittir. Değerler backend'in tek doğruluk kaynağı olan GameConfig'ten
- * (bkz. lib/game/api.ts getGameConfig) okunur, burada tekrar sabitlenmez.
+ * docs/03-game-rules.md Bölüm 4 (müşteri kararıyla güncellendi): artık tek kaynaklı
+ * değil — sahip olunan HER bölge (Ana Kale dahil), Ana Kale ile birebir aynı oranda
+ * (`baseProductionPerInterval`) kendi askerini üretir. Toplam üretim, bölge sayısı ×
+ * bu oran. Değerler backend'in tek doğruluk kaynağı olan GameConfig'ten (bkz.
+ * lib/game/api.ts getGameConfig) okunur, burada tekrar sabitlenmez.
  */
 export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
   const myRegions = state.regions.filter((r) => r.ownerId === myPlayerId);
-  const myProduction =
-    gameConfig.baseProductionPerInterval + Math.max(0, myRegions.length - 1) * gameConfig.productionBonusPerRegion;
+  const myProduction = myRegions.length * gameConfig.baseProductionPerInterval;
 
   return (
     <Card size="sm" className="flex-row items-center justify-between gap-4 px-4">
@@ -35,7 +32,13 @@ export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
             <div key={player.id} className="flex items-center gap-3">
               <span
                 className="inline-block size-3 rounded-sm"
-                style={{ backgroundColor: colorForSlot(player.slot) }}
+                style={{
+                  backgroundColor: playerFillColor({
+                    roomType: state.room.type,
+                    ownerId: player.id,
+                    ownerSlot: player.slot,
+                  }),
+                }}
               />
               <div className="flex flex-col leading-tight">
                 <span className="text-sm font-medium">
@@ -56,11 +59,13 @@ export function Hud({ state, myPlayerId, gameConfig }: HudProps) {
           );
         })}
       </div>
+      {/* docs/18-yeni-oyun-ici ui-gelistirme.md Bölüm 25: üretim rakamı/kuralı aynı
+          (yalnızca sunum) — daha oyun içi bir "+X / Ys" biçimine kısaltıldı. */}
       <div className="text-sm font-medium tabular-nums">
         {state.status === "Completed" || state.status === "Cancelled"
           ? "Maç bitti"
           : state.status === "Playing"
-            ? `Üretim: 10sn'de ${myProduction} asker`
+            ? `+${myProduction} / ${gameConfig.productionIntervalSeconds}s`
             : `${state.lobbyConfirmedCount}/${state.room.maxPlayers} oyuncu`}
       </div>
     </Card>

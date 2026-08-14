@@ -90,9 +90,20 @@ public class BotMatchService
         return addedBots;
     }
 
-    /// <summary>Match.Lock zaten tutuluyorken (EconomyTickService.Tick içinden) çağrılmalıdır.</summary>
-    public void ProcessBotDecisions(Match match, DateTime now)
+    /// <summary>
+    /// Match.Lock zaten tutuluyorken (EconomyTickService.Tick içinden) çağrılmalıdır.
+    /// docs/20-state-io-army-gorsel-fark-giderme.md §2.A.8: bot bir dispatch başlattığında
+    /// (StartDispatch), oyuncunun GameHub.AttackRegion'da yaptığı gibi ilk grubun anında
+    /// yayınlanması gerekir — aksi halde bot saldırısı client'ta ancak bir sonraki periyodik
+    /// MatchState senkronuyla (≤1sn gecikmeli, hareketin ortasından "beliren") görünür olur,
+    /// bu da bot saldırısını oyuncununkinden görsel olarak daha ani/düşük kaliteli gösterir.
+    /// Bu yüzden ilk-grup sonuçları toplanıp çağırana (EconomyTickService) döndürülür ki
+    /// aynı ArmyDeparted/ArmyClashed yayın yolundan geçsin.
+    /// </summary>
+    public List<ArmyDepartureResult> ProcessBotDecisions(Match match, DateTime now)
     {
+        var departures = new List<ArmyDepartureResult>();
+
         foreach (var bot in match.Players.Where(p => p.IsBot && !p.IsEliminated))
         {
             var interval = bot.BotDifficulty switch
@@ -108,18 +119,27 @@ public class BotMatchService
             }
 
             bot.LastActionAtUtc = now;
-            TryIssueAttack(match, bot, now);
+            var firstBatch = TryIssueAttack(match, bot, now);
+            if (firstBatch is not null)
+            {
+                departures.Add(firstBatch);
+            }
         }
+
+        return departures;
     }
 
     /// <summary>
-    /// docs/03-game-rules.md Bölüm 6: "tek bölgeden aynı anda birden fazla hedefe
-    /// gönderim yok" — bot da bu tick'te en fazla bir saldırı emri verir. Hedef
-    /// seçimi: fethedilebilir (A_i &gt; d_i, Bölüm 5 "+2 kuralı") komşulardan en
-    /// zayıf olanı — bu, "sonuç önceden belirlenmez" kuralıyla tutarlı basit ama
-    /// gerçek bir karar mekanizmasıdır (rastgele/sabit değil, oyun durumuna bakar).
+    /// Bot, kendi karar aralığında (zorluk profiline göre) en fazla bir yeni sevkiyat
+    /// başlatır — bu bir bot-tempo tercihidir (rastgele/sabit değil, oyun durumuna
+    /// bakan basit ama gerçek bir karar mekanizması), docs/19-army.md ile birden fazla
+    /// hedefe gönderim desteklendiğinden artık bir mimari kısıt değildir: bot da
+    /// oyuncu gibi StartDispatch üzerinden aynı zaman-bazlı kademeli sevkiyat
+    /// mekanizmasını kullanır, farklı karar turlarında farklı bölgelerinden ayrı
+    /// dispatch'ler birikebilir (docs/19-army.md §25). Hedef seçimi: fethedilebilir
+    /// (A_i &gt; d_i, Bölüm 5 "+2 kuralı") komşulardan en zayıf olanı.
     /// </summary>
-    private void TryIssueAttack(Match match, Player bot, DateTime now)
+    private ArmyDepartureResult? TryIssueAttack(Match match, Player bot, DateTime now)
     {
         var ownedRegions = match.Regions.Values.Where(r => r.OwnerId == bot.Id).ToList();
 
@@ -153,9 +173,10 @@ public class BotMatchService
                 continue;
             }
 
-            _movementService.DepartArmy(match, bot, region, target.Id, now);
-            return;
+            return _movementService.StartDispatch(match, bot, region, target.Id, now).FirstBatch;
         }
+
+        return null;
     }
 
     private static BotDifficulty PickDifficulty()

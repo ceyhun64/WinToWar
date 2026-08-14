@@ -89,13 +89,16 @@ public class EconomyTickService : BackgroundService
 
             case MatchStatus.Playing:
                 List<string>? winners;
+                TickResult tickResult;
                 lock (match.Lock)
                 {
-                    Tick(match, now);
+                    tickResult = Tick(match, now);
                     winners = match.Status == MatchStatus.Completed ? match.Winners.ToList() : null;
                 }
 
                 await BroadcastState(match, cancellationToken);
+                await BroadcastArmyDepartures(match, tickResult.Departures, cancellationToken);
+                await BroadcastArmyArrivals(match, tickResult.ArrivedArmies, cancellationToken);
 
                 if (winners is { Count: > 0 } && !match.Room.IsPractice)
                 {
@@ -166,27 +169,46 @@ public class EconomyTickService : BackgroundService
         }
     }
 
-    /// <summary>Match.Lock altında çağrılır. Unit testler için internal (bkz. InternalsVisibleTo).</summary>
-    internal void Tick(Match match, DateTime now)
+    /// <summary>docs/19-army.md: bir tick içinde yola çıkan (Departures) ve hedefe ulaşan (ArrivedArmies) ordu grupları — çağıran taraf (TickMatchAsync) bunları ayrı event'lerle yayınlar.</summary>
+    internal record TickResult(List<ArmyDepartureResult> Departures, List<Army> ArrivedArmies);
+
+    /// <summary>
+    /// Match.Lock altında çağrılır. Unit testler için internal (bkz. InternalsVisibleTo).
+    /// </summary>
+    internal TickResult Tick(Match match, DateTime now)
     {
         ApplyProduction(match, now);
-        _movementService.ProcessArrivals(match, now);
+        ApplyNeutralRegionRegen(match, now);
+        // docs/19-army.md: kaynak bölgelerden kademeli olarak vadesi gelen sevkiyat
+        // gruplarını gerçek Army kayıtlarına dönüştürür — üretimden SONRA, varıştan
+        // ÖNCE çalışır ki aynı tick içinde hem üretilen hem gönderilen asker doğru
+        // sırayla region.SoldierCount'a yansısın (§20).
+        var departures = _movementService.ProcessDispatches(match, now);
+        var arrivedArmies = _movementService.ProcessArrivals(match, now);
         // docs/03-game-rules.md Bölüm 7 (DÜZELTME): bot kararları, güncel üretim/
         // varış sonrası tahtaya göre değerlendirilir — en son gerçek durumu kullanır.
-        _botMatchService.ProcessBotDecisions(match, now);
+        // docs/20-state-io-army-gorsel-fark-giderme.md §2.A.8: bot'un bu turda başlattığı
+        // yeni bir dispatch'in ilk grubu da (yukarıdaki ProcessDispatches'ten SONRA,
+        // henüz o listeye giremeden oluştuğu için) aynı departures listesine eklenir —
+        // aksi halde bot saldırısı player'dan farklı, gecikmeli bir yoldan görünür olur.
+        departures.AddRange(_botMatchService.ProcessBotDecisions(match, now));
         var newlyEliminated = ProcessAbandonment(match, now);
         EvaluateMatchEnd(match, now, newlyEliminated);
+        return new TickResult(departures, arrivedArmies);
     }
 
     /// <summary>
-    /// docs/03-game-rules.md Bölüm 4: ProductionPerInterval = BaseProduction(4) +
-    /// ConqueredRegionCount × BonusPerRegion(1), her ProductionIntervalSeconds(10)
-    /// saniyede bir, yalnızca hâlâ kendi ev kalesini elinde tutan oyuncular için.
-    /// Tick saniyelik olduğundan üretim GameConfig.ProductionIntervalSeconds'a göre
-    /// kesirli birikimle işlenir — bunun için her oyuncunun son üretim zamanı yerine,
-    /// basit ve deterministik bir yaklaşım kullanılır: maç başlangıcından bu yana
-    /// geçen tam interval sayısı hesaplanıp bir önceki tick'teki tam interval
-    /// sayısıyla karşılaştırılır.
+    /// docs/03-game-rules.md Bölüm 4 (müşteri kararıyla güncellendi — bkz. Bölüm 15-B.1):
+    /// artık tek kaynaklı DEĞİL — sahip olunan HER bölge (Ana Kale dahil), Ana Kale ile
+    /// birebir aynı oranda (`BaseProductionPerInterval`, her `ProductionIntervalSeconds`de
+    /// bir) kendi askerini kendi üretir. Fethedilen bir bölge artık "1 asker"de takılı
+    /// kalmaz, Ana Kale gibi büyümeye başlar. Eski "ConqueredRegionCount × BonusPerRegion"
+    /// merkezi bonus formülü bu değişiklikle gereksizleşti ve kaldırıldı — daha fazla
+    /// bölge tutmanın karşılığı artık dolaylı bir bonus değil, doğrudan o bölgelerin
+    /// kendi üretimidir. Tick saniyelik olduğundan üretim GameConfig.ProductionIntervalSeconds'a
+    /// göre kesirli birikimle işlenir — bunun için basit ve deterministik bir yaklaşım
+    /// kullanılır: maç başlangıcından bu yana geçen tam interval sayısı hesaplanıp bir
+    /// önceki tick'teki tam interval sayısıyla karşılaştırılır.
     /// </summary>
     private static void ApplyProduction(Match match, DateTime now)
     {
@@ -205,30 +227,69 @@ public class EconomyTickService : BackgroundService
             return;
         }
 
-        foreach (var player in match.Players.Where(p => !p.IsEliminated))
+        foreach (var region in match.Regions.Values)
         {
-            var homeRegion = match.Regions.Values.FirstOrDefault(r => IsProducingHomeRegionOf(r, player.Id));
-            if (homeRegion is null)
+            if (region.OwnerId is not { } ownerId)
             {
                 continue;
             }
 
-            var conqueredRegionCount = Math.Max(0, match.Regions.Values.Count(r => r.OwnerId == player.Id) - 1);
-            var production = GameConfig.BaseProductionPerInterval + conqueredRegionCount * GameConfig.ProductionBonusPerRegion;
-            // Bölüm 4/12: turtling'i anlamsız kılan tavan — sınıra ulaşınca üretim durur,
-            // sınırın altına inince (asker gönderilince) otomatik devam eder.
-            homeRegion.SoldierCount = Math.Min(GameConfig.MaxAccumulatedTroops, homeRegion.SoldierCount + production);
+            var owner = match.Players.FirstOrDefault(p => p.Id == ownerId);
+            if (owner is null || owner.IsEliminated)
+            {
+                continue;
+            }
+
+            // Bölüm 4/12: turtling'i anlamsız kılan tavan — artık bölge-bazlı uygulanır
+            // (önceden tek bir Ana Kale toplamına uygulanıyordu), her bölge kendi
+            // sınırına ulaşınca durur, sınırın altına inince (asker gönderilince)
+            // otomatik devam eder.
+            region.SoldierCount = Math.Min(GameConfig.MaxAccumulatedTroops, region.SoldierCount + GameConfig.BaseProductionPerInterval);
         }
     }
 
     /// <summary>
-    /// docs/02-architecture.md "Models — entity'ler yalnızca veri ve durumu tutar":
-    /// bu iş kuralı önceden Region.IsProducingHomeRegionOf olarak entity üzerindeydi,
-    /// buraya (Service katmanına, tek çağrı noktası) taşındı (docs/09-eksik-tarama-promptu.md
-    /// denetimi, Faz 8). Yalnızca hâlâ kendi orijinal sahibinin elindeyken üretim yapar.
+    /// docs/03-game-rules.md Bölüm 4 (yeni müşteri talimatı): fethedilmeyen (sahipsiz/nötr)
+    /// bir bölge saldırıyla zayıflatılıp ele geçirilemezse (ör. 10 savunmaya 6 asker
+    /// gönderilip püskürtülürse savunma 4'e düşer), o andan itibaren HER SANİYE +1
+    /// kendiliğinden iyileşir — odanın savunma tavanına (`Room.GreyRegionDefenseCount`)
+    /// ulaşınca durur. `GameConfig.GameTickMs` artık 1 saniyeden kısa olduğundan (bkz.
+    /// GameConfig notu) `ApplyProduction` ile AYNI elapsed-time interval sayma deseni
+    /// kullanılır — tick'in kendisi saniyede bir kereden fazla çalışsa bile bölge en
+    /// fazla saniyede 1 kez artar. Yalnızca hâlâ sahipsiz bölgeleri etkiler — bir
+    /// oyuncu tarafından ele geçirilmiş bölgeler bu mekanikten etkilenmez, onlar
+    /// yukarıdaki bölge-bazlı üretim formülüyle büyür.
     /// </summary>
-    private static bool IsProducingHomeRegionOf(Region region, string playerId) =>
-        region.OriginalOwnerId == playerId && region.OwnerId == playerId;
+    private static void ApplyNeutralRegionRegen(Match match, DateTime now)
+    {
+        if (match.StartedAtUtc is not DateTime startedAt)
+        {
+            return;
+        }
+
+        var elapsedSeconds = (now - startedAt).TotalSeconds;
+        var previousElapsedSeconds = elapsedSeconds - GameConfig.GameTickMs / 1000.0;
+        var currentIntervals = (int)(elapsedSeconds / GameConfig.NeutralRegenIntervalSeconds);
+        var previousIntervals = (int)(Math.Max(0, previousElapsedSeconds) / GameConfig.NeutralRegenIntervalSeconds);
+
+        if (currentIntervals <= previousIntervals)
+        {
+            return;
+        }
+
+        foreach (var region in match.Regions.Values)
+        {
+            if (region.OwnerId is not null)
+            {
+                continue;
+            }
+
+            if (region.SoldierCount < match.Room.GreyRegionDefenseCount)
+            {
+                region.SoldierCount += 1;
+            }
+        }
+    }
 
     /// <summary>Bağlantısı kopan oyuncu AbandonmentTimeoutSeconds içinde dönmezse otomatik elenir.</summary>
     private List<string> ProcessAbandonment(Match match, DateTime now)
@@ -298,5 +359,50 @@ public class EconomyTickService : BackgroundService
         }
 
         await _hubContext.Clients.Group(match.Id).SendAsync("MatchState", dto, cancellationToken);
+    }
+
+    /// <summary>
+    /// docs/19-army.md: bu tick'te bir dispatch'ten kaynaktan gerçekten ayrılan her
+    /// grup için ArmyDeparted (ve varsa karşı yönlü bir ordu ile aynı anda karşılaştıysa
+    /// ArmyClashed) event'i yayınlar — GameHub.AttackRegion'daki ilk-grup broadcast'iyle
+    /// aynı DTO mapping'i kullanır (MatchStateMapper.ToArmyDto).
+    /// </summary>
+    private async Task BroadcastArmyDepartures(Match match, List<ArmyDepartureResult> departures, CancellationToken cancellationToken)
+    {
+        foreach (var departure in departures)
+        {
+            await _hubContext.Clients.Group(match.Id).SendAsync("ArmyDeparted", new ArmyDepartedDto
+            {
+                Army = MatchStateMapper.ToArmyDto(departure.DepartedArmy)
+            }, cancellationToken);
+
+            if (departure.Clash is not null)
+            {
+                var clash = departure.Clash;
+                await _hubContext.Clients.Group(match.Id).SendAsync("ArmyClashed", new ArmyClashedDto
+                {
+                    FirstArmyId = clash.FirstArmyId,
+                    SecondArmyId = clash.SecondArmyId,
+                    WinningArmyId = clash.WinningArmyId,
+                    SurvivorCount = clash.SurvivorCount,
+                    ClashAtUtc = clash.ClashAtUtc
+                }, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>docs/15-asker-hareketi-performans.md Bölüm 6.3: her varan ordu için ayrı ayrı yayınlanır ki animasyon katmanı MatchState'in bir sonraki tick'ini beklemeden varış/pop animasyonunu oynatabilsin.</summary>
+    private async Task BroadcastArmyArrivals(Match match, List<Army> arrivedArmies, CancellationToken cancellationToken)
+    {
+        foreach (var army in arrivedArmies)
+        {
+            await _hubContext.Clients.Group(match.Id).SendAsync("ArmyArrived", new ArmyArrivedDto
+            {
+                ArmyId = army.Id,
+                OwnerId = army.OwnerId,
+                SoldierCount = army.SoldierCount,
+                RegionId = army.ToRegionId
+            }, cancellationToken);
+        }
     }
 }

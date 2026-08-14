@@ -35,13 +35,44 @@ export interface RegionStateDto {
   isVisible: boolean;
 }
 
+/**
+ * docs/15-asker-hareketi-performans.md Bölüm 6.2: DepartedAtUtc/ArrivesAtUtc mutlak
+ * zaman damgaları (ISO string, UTC) olarak gelir — client ara kareleri kendisi
+ * hesaplar (bkz. useArmyAnimation.ts), sunucu her frame için pozisyon göndermez.
+ */
 export interface ArmyDto {
   id: string;
   ownerId: string;
   soldierCount: number;
   fromRegionId: string;
   toRegionId: string;
-  arrivesInSeconds: number;
+  departedAtUtc: string;
+  arrivesAtUtc: string;
+}
+
+/** docs/15-asker-hareketi-performans.md Bölüm 6.3: yeni bir sevkiyat başladığında anlık gelir. */
+export interface ArmyDepartedEvent {
+  army: ArmyDto;
+}
+
+/**
+ * Bölüm 4/6.3: iki sevkiyat karşılaştığında gelir. winningArmyId null ise
+ * (survivorCount === 0) her iki ordu da tamamen elenmiştir.
+ */
+export interface ArmyClashedEvent {
+  firstArmyId: string;
+  secondArmyId: string;
+  winningArmyId: string | null;
+  survivorCount: number;
+  clashAtUtc: string;
+}
+
+/** Bölüm 6.3: bir sevkiyat hedefine ulaştığında gelir. */
+export interface ArmyArrivedEvent {
+  armyId: string;
+  ownerId: string;
+  soldierCount: number;
+  regionId: string;
 }
 
 export interface MatchStateDto {
@@ -58,12 +89,20 @@ export interface MatchStateDto {
   completedAtUtc: string | null;
 }
 
+export interface MapRegionGeometryDto {
+  type: "polygon";
+  /** SVG polygon köşe noktaları, [x, y] çiftleri — bkz. docs/14-game-map-redesign.md. */
+  points: [number, number][];
+}
+
 export interface MapRegionDto {
   id: string;
   name: string;
+  /** Bölgenin merkez noktası (geometry centroid'i) — badge/etiket konumlaması için. */
   x: number;
   y: number;
   neighborIds: string[];
+  geometry: MapRegionGeometryDto;
 }
 
 export interface MapDto {
@@ -80,7 +119,6 @@ export interface GameConfigDto {
   practiceRoomDefaultPlayerCount: number;
   baseProductionPerInterval: number;
   productionIntervalSeconds: number;
-  productionBonusPerRegion: number;
   movementDurationSeconds: number;
   lobbyFillTimeoutSeconds: number;
   practiceLobbyFillTimeoutSeconds: number;

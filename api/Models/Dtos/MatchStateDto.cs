@@ -65,6 +65,12 @@ public class RegionStateDto
     public required bool IsVisible { get; init; }
 }
 
+/// <summary>
+/// docs/15-asker-hareketi-performans.md Bölüm 6.2: DepartedAtUtc/ArrivesAtUtc mutlak
+/// zaman damgaları olarak gönderilir ki client ara kareleri (requestAnimationFrame ile)
+/// kendisi hesaplayabilsin — sunucu her frame için ayrı bir pozisyon göndermez, ve
+/// yeniden bağlanan bir client da (Bölüm 6.2 resync) bu alanlardan devam edebilir.
+/// </summary>
 public class ArmyDto
 {
     public required string Id { get; init; }
@@ -72,5 +78,34 @@ public class ArmyDto
     public required int SoldierCount { get; init; }
     public required string FromRegionId { get; init; }
     public required string ToRegionId { get; init; }
-    public required int ArrivesInSeconds { get; init; }
+    public required DateTime DepartedAtUtc { get; init; }
+    public required DateTime ArrivesAtUtc { get; init; }
+}
+
+/// <summary>docs/15-asker-hareketi-performans.md Bölüm 6.3: yeni bir sevkiyat başladığında anlık yayınlanır.</summary>
+public class ArmyDepartedDto
+{
+    public required ArmyDto Army { get; init; }
+}
+
+/// <summary>
+/// Bölüm 4/6.3: iki sevkiyat karşılaştığında yayınlanır. WinningArmyId null ise
+/// (SurvivorCount == 0) her iki ordu da tamamen elenmiştir.
+/// </summary>
+public class ArmyClashedDto
+{
+    public required string FirstArmyId { get; init; }
+    public required string SecondArmyId { get; init; }
+    public string? WinningArmyId { get; init; }
+    public required int SurvivorCount { get; init; }
+    public required DateTime ClashAtUtc { get; init; }
+}
+
+/// <summary>Bölüm 6.3: bir sevkiyat hedefine ulaştığında yayınlanır (mevcut savaş/ele geçirme sonucu ayrıca MatchState üzerinden gelir).</summary>
+public class ArmyArrivedDto
+{
+    public required string ArmyId { get; init; }
+    public required string OwnerId { get; init; }
+    public required int SoldierCount { get; init; }
+    public required string RegionId { get; init; }
 }

@@ -28,7 +28,10 @@ public class Match
     public Dictionary<string, Region> Regions { get; } = new();
     public List<Army> Armies { get; } = new();
 
-    /// <summary>docs/03-game-rules.md Bölüm 10 tie-break kuralı için — bkz. Army.SequenceNo.</summary>
+    /// <summary>docs/19-army.md: kaynak bölgeden gerçek zamana yayılı ayrılan aktif sevkiyatlar — bkz. Dispatch.</summary>
+    public List<Dispatch> Dispatches { get; } = new();
+
+    /// <summary>docs/03-game-rules.md Bölüm 10 tie-break kuralı için — bkz. Army.SequenceNo. Dispatch.SequenceNo de bu sayaçtan türer.</summary>
     public long NextArmySequenceNo { get; set; }
     public MatchStatus Status { get; set; } = MatchStatus.Lobby;
 

@@ -127,19 +127,52 @@ public class CombatServiceTests
         Assert.Equal(1, region2.SoldierCount);
     }
 
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 8 (müşteri kararıyla güncellendi — "kale gibi bir alan
+    /// olmayacak"): artık ayrıcalıklı bir "orijinal başlangıç bölgesi" yok, dolayısıyla onu
+    /// kaybetmek tek başına elemez — oyuncu hâlâ başka bir bölgeye (burada "remich") sahip
+    /// olduğu sürece oyunda kalır.
+    /// </summary>
     [Fact]
-    public void ResolveAttack_CapturingHomeRegion_EliminatesDefenderAndTheirOtherRegionsBecomeNeutral()
+    public void ResolveAttack_CapturingOneOfSeveralRegions_DoesNotEliminateDefenderIfTheyStillOwnAnother()
     {
         var attacker = new Player { Id = "attacker", Slot = 0, Name = "Alice" };
         var defender = new Player { Id = "defender", Slot = 1, Name = "Bob" };
         var match = CreateMatch(players: [attacker, defender]);
 
-        var homeRegion = new Region { Id = "dudelange", OriginalOwnerId = defender.Id, OwnerId = defender.Id, SoldierCount = 1 };
-        match.Regions[homeRegion.Id] = homeRegion;
+        var originalRegion = new Region { Id = "dudelange", OriginalOwnerId = defender.Id, OwnerId = defender.Id, SoldierCount = 1 };
+        match.Regions[originalRegion.Id] = originalRegion;
 
-        // Defender'ın başka bir oyuncudan ele geçirdiği bölge.
-        var capturedRegion = new Region { Id = "remich", OriginalOwnerId = "third-player", OwnerId = defender.Id, SoldierCount = 7 };
-        match.Regions[capturedRegion.Id] = capturedRegion;
+        // Defender'ın başka bir oyuncudan ele geçirdiği, hâlâ elinde tuttuğu ikinci bölge.
+        var otherRegion = new Region { Id = "remich", OriginalOwnerId = "third-player", OwnerId = defender.Id, SoldierCount = 7 };
+        match.Regions[otherRegion.Id] = otherRegion;
+
+        var army = CreateArmy(attacker.Id, soldierCount: 5, toRegionId: originalRegion.Id);
+        var result = _sut.ResolveAttack(match, army, originalRegion, DateTime.UtcNow);
+
+        Assert.True(result.Captured);
+        Assert.False(defender.IsEliminated);
+        Assert.Equal(attacker.Id, originalRegion.OwnerId);
+        // Hâlâ elinde tuttuğu bölgeye dokunulmaz — nötrleşme yalnızca gerçek elemede olur.
+        Assert.Equal(defender.Id, otherRegion.OwnerId);
+        Assert.Equal(7, otherRegion.SoldierCount);
+    }
+
+    /// <summary>
+    /// docs/03-game-rules.md Bölüm 8: bir oyuncu, elindeki bölge sayısı sıfıra düştüğünde
+    /// elenir — kaybedilen bölgenin "orijinal başlangıç bölgesi" olup olmadığı önemli
+    /// değildir (burada kasıtlı olarak ele geçirilmiş, orijinal olmayan bir bölge kaybediliyor).
+    /// </summary>
+    [Fact]
+    public void ResolveAttack_CapturingDefendersLastRemainingRegion_EliminatesDefenderRegardlessOfOriginalOwner()
+    {
+        var attacker = new Player { Id = "attacker", Slot = 0, Name = "Alice" };
+        var defender = new Player { Id = "defender", Slot = 1, Name = "Bob" };
+        var match = CreateMatch(players: [attacker, defender]);
+
+        // Defender'ın tek bölgesi — orijinal başlangıç bölgesi değil, fethedilmiş bir bölge.
+        var lastRegion = new Region { Id = "remich", OriginalOwnerId = "third-player", OwnerId = defender.Id, SoldierCount = 1 };
+        match.Regions[lastRegion.Id] = lastRegion;
 
         var strandedArmy = new Army
         {
@@ -154,14 +187,12 @@ public class CombatServiceTests
         };
         match.Armies.Add(strandedArmy);
 
-        var army = CreateArmy(attacker.Id, soldierCount: 5, toRegionId: homeRegion.Id);
-        var result = _sut.ResolveAttack(match, army, homeRegion, DateTime.UtcNow);
+        var army = CreateArmy(attacker.Id, soldierCount: 5, toRegionId: lastRegion.Id);
+        var result = _sut.ResolveAttack(match, army, lastRegion, DateTime.UtcNow);
 
         Assert.True(result.Captured);
         Assert.True(defender.IsEliminated);
-        Assert.Equal(attacker.Id, homeRegion.OwnerId);
-        Assert.Null(capturedRegion.OwnerId);
-        Assert.Equal(1, capturedRegion.SoldierCount); // Room.GreyRegionDefenseCount'a sıfırlanır (bkz. 03-game-rules.md Bölüm 8).
+        Assert.Equal(attacker.Id, lastRegion.OwnerId);
         Assert.DoesNotContain(match.Armies, a => a.OwnerId == defender.Id);
     }
 }

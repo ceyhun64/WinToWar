@@ -40,6 +40,15 @@ public class MapProvider
                     $"Bölge '{region.Id}' {GameConfig.NeighborsPerRegion} komşuya sahip olmalı, ancak {region.Neighbors.Count} bulundu.");
             }
 
+            // docs/14-game-map-redesign.md Bölüm 3 "Geometri bütünlüğü": her bölge
+            // yaklaşık 4-8 ana köşeden oluşur — aşırı basit (çizilemez) veya aşırı
+            // karmaşık/köşeli bir şekil harita bütünlüğünü bozar.
+            if (region.Geometry.Points.Count is < 4 or > 8)
+            {
+                throw new InvalidOperationException(
+                    $"Bölge '{region.Id}' geometrisi 4-8 köşe içermeli, ancak {region.Geometry.Points.Count} köşe bulundu.");
+            }
+
             foreach (var neighborId in region.Neighbors)
             {
                 if (!RegionsById.TryGetValue(neighborId, out var neighbor))

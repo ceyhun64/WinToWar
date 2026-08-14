@@ -3,9 +3,21 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace api.Controllers;
 
-public record AdminMatchSummary(string MatchId, string Status, string RoomType, int PlayerCount, int MaxPlayers, string EntryFeeUsd);
+public record AdminMatchSummary(
+    string MatchId,
+    string Status,
+    string RoomType,
+    int PlayerCount,
+    int MaxPlayers,
+    string EntryFeeUsd
+);
 
-public record AdminMatchEventDto(int SequenceNo, string EventType, string PayloadJson, DateTime OccurredAt);
+public record AdminMatchEventDto(
+    int SequenceNo,
+    string EventType,
+    string PayloadJson,
+    DateTime OccurredAt
+);
 
 /// <summary>
 /// docs/07-pages.md `/admin/maclar`: aktif/geçmiş maç listesi. 🛠️ Oyun state'i
@@ -31,14 +43,15 @@ public class AdminMatchesController : ControllerBase
     [HttpGet]
     public ActionResult<List<AdminMatchSummary>> GetAll()
     {
-        var matches = _matchManager.ActiveMatches
-            .Select(m => new AdminMatchSummary(
+        var matches = _matchManager
+            .ActiveMatches.Select(m => new AdminMatchSummary(
                 m.Id,
                 m.Status.ToString(),
                 m.Room.Type.ToString(),
                 m.Players.Count,
                 m.Room.MaxPlayers,
-                m.Room.EntryFeeUsd.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+                m.Room.EntryFeeUsd.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ))
             .OrderByDescending(m => m.Status)
             .ToList();
 
@@ -50,11 +63,19 @@ public class AdminMatchesController : ControllerBase
     /// ham denetim kaydı — genel kullanıcıya (`/gecmis`) asla gösterilmez, yalnızca admin.
     /// </summary>
     [HttpGet("{matchId}/events")]
-    public async Task<ActionResult<List<AdminMatchEventDto>>> GetEvents(string matchId, CancellationToken cancellationToken)
+    public async Task<ActionResult<List<AdminMatchEventDto>>> GetEvents(
+        string matchId,
+        CancellationToken cancellationToken
+    )
     {
         var events = await _eventLogReader.GetEventsAsync(matchId, cancellationToken);
         var dtos = events
-            .Select(e => new AdminMatchEventDto(e.SequenceNo, e.EventType.ToString(), e.PayloadJson, e.OccurredAt))
+            .Select(e => new AdminMatchEventDto(
+                e.SequenceNo,
+                e.EventType.ToString(),
+                e.PayloadJson,
+                e.OccurredAt
+            ))
             .ToList();
 
         return Ok(dtos);

@@ -32,11 +32,20 @@ public class InvoicesController : ControllerBase
     /// sızdırmamak için 404 döner (403 değil).
     /// </summary>
     [HttpGet("{invoiceId}")]
-    public async Task<ActionResult<PaymentInvoiceDto>> GetInvoice(string invoiceId, CancellationToken cancellationToken)
+    public async Task<ActionResult<PaymentInvoiceDto>> GetInvoice(
+        string invoiceId,
+        CancellationToken cancellationToken
+    )
     {
         if (!Guid.TryParse(invoiceId, out var id))
         {
-            return BadRequest(new PaymentErrorResponse { Code = "INVALID_INVOICE_ID", Message = "Geçersiz invoice id." });
+            return BadRequest(
+                new PaymentErrorResponse
+                {
+                    Code = "INVALID_INVOICE_ID",
+                    Message = "Geçersiz invoice id.",
+                }
+            );
         }
 
         var playerId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
@@ -46,14 +55,26 @@ public class InvoicesController : ControllerBase
             var dto = await _paymentService.GetInvoiceAsync(id, cancellationToken);
             if (dto.PlayerId != playerId)
             {
-                return NotFound(new PaymentErrorResponse { Code = "INVOICE_NOT_FOUND", Message = "Invoice bulunamadı." });
+                return NotFound(
+                    new PaymentErrorResponse
+                    {
+                        Code = "INVOICE_NOT_FOUND",
+                        Message = "Invoice bulunamadı.",
+                    }
+                );
             }
 
             return Ok(dto);
         }
         catch (PaymentInvoiceNotFoundException)
         {
-            return NotFound(new PaymentErrorResponse { Code = "INVOICE_NOT_FOUND", Message = "Invoice bulunamadı." });
+            return NotFound(
+                new PaymentErrorResponse
+                {
+                    Code = "INVOICE_NOT_FOUND",
+                    Message = "Invoice bulunamadı.",
+                }
+            );
         }
     }
 }

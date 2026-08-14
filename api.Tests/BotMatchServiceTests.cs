@@ -182,11 +182,18 @@ public class BotMatchServiceTests
 
         _sut.ProcessBotDecisions(match, DateTime.UtcNow);
 
+        // docs/19-army.md: bot da StartDispatch üzerinden aynı kademeli sevkiyat
+        // mekanizmasını kullanır — sendable=5'in TAMAMI anında tek bir Army olarak
+        // değil, bir Dispatch olarak rezerve edilir, ilk grup anında yola çıkar.
+        var dispatch = Assert.Single(match.Dispatches);
+        Assert.Equal("luxembourg-city", dispatch.FromRegionId);
+        Assert.Equal("esch-sur-alzette", dispatch.ToRegionId);
+        Assert.Equal(5 - GameConfig.MinGarrisonPerSend, dispatch.TotalAmount);
+
         var army = Assert.Single(match.Armies);
         Assert.Equal("luxembourg-city", army.FromRegionId);
         Assert.Equal("esch-sur-alzette", army.ToRegionId);
-        // sendable = 5 - MinGarrisonPerSend(1) = 4.
-        Assert.Equal(5 - GameConfig.MinGarrisonPerSend, army.SoldierCount);
+        Assert.InRange(army.SoldierCount, 1, dispatch.TotalAmount);
     }
 
     [Fact]

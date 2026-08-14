@@ -138,16 +138,60 @@ public class GameHub : Hub
     }
 
     /// <summary>
-    /// Bir bölgeden doğrudan komşu bir bölgeye saldırı/takviye gönderir (docs/03-game-rules.md
-    /// Bölüm 6/15 — sürükle-bırak). Asker sayısı client'tan gelmez, sunucu kaynak bölgenin
-    /// mevcut askerinden GameConfig.MinGarrisonPerSend çıkararak kendisi hesaplar.
+    /// Bir bölgeden haritadaki başka bir bölgeye saldırı/takviye sevkiyatı başlatır
+    /// (docs/03-game-rules.md Bölüm 6, docs/19-army.md). Kaynaktaki o an FİİLEN
+    /// kullanılabilir asker sayısının (diğer aktif sevkiyatların rezerve payı hariç)
+    /// TAMAMI yeni, bağımsız bir sevkiyata atanır — asker sayısı client'tan gelmez.
+    /// Askerler bu sevkiyattan anında değil, gerçek geçen zamana göre kademeli
+    /// gruplar halinde ayrılır (docs/19-army.md §8) — bkz. EconomyTickService.Tick →
+    /// MovementService.ProcessDispatches; ilk grup burada anında yola çıkar, geri
+    /// kalanı sonraki tick'lerde.
+    ///
+    /// docs/15-asker-hareketi-performans.md Bölüm 6.3: MatchState resync'e ek olarak,
+    /// animasyon katmanının anında tepki verebilmesi için ArmyDeparted (ve varsa
+    /// ArmyClashed) event'i yayınlanır.
     /// </summary>
     public async Task AttackRegion(string fromRegionId, string toRegionId)
     {
-        await HandleAction(fromRegionId, (match, player, region, now) =>
+        var outcome = await HandleAction(fromRegionId, (match, player, region, now) =>
+            _movementService.StartDispatch(match, player, region, toRegionId, now));
+
+        if (outcome is null)
         {
-            _movementService.DepartArmy(match, player, region, toRegionId, now);
+            return;
+        }
+
+        var (match, startResult) = outcome.Value;
+        if (startResult.FirstBatch is not null)
+        {
+            await BroadcastDeparture(match, startResult.FirstBatch);
+        }
+    }
+
+    /// <summary>
+    /// docs/19-army.md: Army grubu yola çıktığında (dispatch başlangıcında veya
+    /// EconomyTickService'in tick'i içinde) ArmyDeparted/ArmyClashed event'lerini
+    /// yayınlar — DTO mapping'i tek yerde (MatchStateMapper.ToArmyDto).
+    /// </summary>
+    private async Task BroadcastDeparture(Match match, ArmyDepartureResult departureResult)
+    {
+        await Clients.Group(match.Id).SendAsync("ArmyDeparted", new ArmyDepartedDto
+        {
+            Army = MatchStateMapper.ToArmyDto(departureResult.DepartedArmy)
         });
+
+        if (departureResult.Clash is not null)
+        {
+            var clash = departureResult.Clash;
+            await Clients.Group(match.Id).SendAsync("ArmyClashed", new ArmyClashedDto
+            {
+                FirstArmyId = clash.FirstArmyId,
+                SecondArmyId = clash.SecondArmyId,
+                WinningArmyId = clash.WinningArmyId,
+                SurvivorCount = clash.SurvivorCount,
+                ClashAtUtc = clash.ClashAtUtc
+            });
+        }
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -166,17 +210,24 @@ public class GameHub : Hub
     /// Ortak aksiyon iskeleti: oyuncuyu ve kaynak bölgeyi doğrular, spam koruması
     /// (PlayerActionRateLimitPerSecond) uygular, mutasyonu Match.Lock altında
     /// uygular, ardından güncel durumu yayınlar. Hata durumunda sadece isteği yapan
-    /// client'a ActionError gönderilir.
+    /// client'a ActionError gönderilir ve null döner.
+    ///
+    /// Generic dönüş değeri (docs/15-asker-hareketi-performans.md Bölüm 6.3): çağıran,
+    /// BroadcastState'ten SONRA aksiyonun sonucuna göre ek event'ler (ör. ArmyDeparted)
+    /// yayınlayabilsin diye hem <paramref name="action"/>'ın sonucu hem de ilgili
+    /// <see cref="Match"/> geri döner.
     /// </summary>
-    private async Task HandleAction(string regionId, Action<Match, Player, Region, DateTime> action)
+    private async Task<(Match Match, TResult Result)?> HandleAction<TResult>(
+        string regionId, Func<Match, Player, Region, DateTime, TResult> action)
     {
         if (!_matchManager.TryGetByConnection(Context.ConnectionId, out var matchId, out var playerId) ||
             !_matchManager.TryGetMatch(matchId, out var match))
         {
             await Clients.Caller.SendAsync("ActionError", "Bir maça bağlı değilsiniz.");
-            return;
+            return null;
         }
 
+        TResult result;
         try
         {
             lock (match.Lock)
@@ -202,17 +253,18 @@ public class GameHub : Hub
                 }
 
                 player.LastActionAtUtc = DateTime.UtcNow;
-                action(match, player, region, DateTime.UtcNow);
+                result = action(match, player, region, DateTime.UtcNow);
             }
         }
         catch (InvalidOperationException ex)
         {
             _logger.LogInformation("Aksiyon reddedildi: {Message}", ex.Message);
             await Clients.Caller.SendAsync("ActionError", ex.Message);
-            return;
+            return null;
         }
 
         await BroadcastState(match);
+        return (match, result);
     }
 
     private static void EnforceRateLimit(Player player, DateTime now)

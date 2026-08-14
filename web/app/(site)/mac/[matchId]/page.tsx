@@ -90,8 +90,10 @@ export default function MacPage({ params }: MacPageProps) {
         myPlayerId=""
         selectedRegionId={null}
         // Biten bir maçın anlık görüntüsünde state.armies zaten boştur (bkz.
-        // 07-pages.md Non-Goals — hamle hamle replay yok), bu değer hiç kullanılmaz.
-        movementDurationSeconds={1}
+        // 07-pages.md Non-Goals — hamle hamle replay yok), sevkiyat event'leri hiç gelmez.
+        armyDeparted={null}
+        armyClashed={null}
+        armyArrived={null}
         onSelectRegion={() => {}}
         onAttack={() => {}}
       />
