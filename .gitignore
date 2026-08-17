@@ -101,4 +101,12 @@ CLAUDE.md
 ## Proje özel (geçici / üretilmiş dosyalar)
 ## ---------------------------------------------------------------------------
 project_tree.txt
-docs/
+
+# NOT: `docs/` daha önce burada ignore ediliyordu; artık versiyon kontrolünde.
+# Gerekçe: görev dokümanları (özellikle docs/05-payment.md) kodun tek doğruluk
+# kaynağı olan iş kurallarını taşıyor, ama izlenmedikleri için kod ile doküman
+# arasındaki kayma görünmez kalıyordu — "v10 vakası"nda payout/refund state
+# machine'leri ve reconciliation kodda kaldırılmışken (commit b6961fa) dokümanın
+# bazı 🔒 bölümleri (2.4, 5.3, 9, 11, 12) eski hâlinde kalmıştı ve bu ancak
+# elle bir denetimle fark edildi. docs/ izlendiğinde bu tür kaymalar diff'te
+# görünür olur (bkz. docs/21-payment-sandbox-e2e.md raporu).
