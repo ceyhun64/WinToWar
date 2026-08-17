@@ -1,6 +1,13 @@
 import { API_BASE_URL } from "@/lib/game/api";
 import { authFetch } from "@/lib/identity";
-import type { PaymentErrorResponse, PaymentInvoiceDto, PayoutSummaryDto, WalletDto, WithdrawalRequestDto } from "./types";
+import type {
+  PaymentErrorResponse,
+  PaymentInvoiceDto,
+  PayoutSummaryDto,
+  WalletDto,
+  WithdrawalAddressSuggestionDto,
+  WithdrawalRequestDto,
+} from "./types";
 
 async function parsePaymentResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -71,6 +78,12 @@ export async function getWalletBalance(): Promise<WalletDto> {
 export async function getPendingWithdrawals(): Promise<WithdrawalRequestDto[]> {
   const res = await authFetch(`/api/wallet/withdrawals`);
   return parsePaymentResponse<WithdrawalRequestDto[]>(res);
+}
+
+/** docs/17-withdrawal-address-suggestions.md Bölüm 2: "Son kullanılan adresler" önerisi. */
+export async function getWithdrawalAddressSuggestions(): Promise<WithdrawalAddressSuggestionDto[]> {
+  const res = await authFetch(`/api/wallet/withdrawal-addresses`);
+  return parsePaymentResponse<WithdrawalAddressSuggestionDto[]>(res);
 }
 
 export async function createTopUpInvoice(amountUsd: number): Promise<PaymentInvoiceDto> {

@@ -1,6 +1,26 @@
 namespace api;
 
 /// <summary>
+/// docs/21-payment-sandbox-e2e.md Bölüm 5: ödeme sağlayıcısının üç çalışma modu.
+/// 🔒 <see cref="Sandbox"/> ile <see cref="Live"/> arasındaki tek fark config
+/// değerleridir (BtcPayBaseUrl/ApiKey/StoreId/WebhookSecret) — kodda bu ikisini
+/// ayıran bir davranış dallanması yazılmaz, aksi hâlde production'a geçiş
+/// "config-only" olmaktan çıkar. Kodun ayırdığı tek şey provider seçiminin
+/// kendisidir: sahte mi, gerçek BTCPay mi.
+/// </summary>
+public enum PaymentProviderMode
+{
+    /// <summary>Ağa hiç çıkmaz (<see cref="Services.Payments.FakePaymentProvider"/>). Günlük geliştirmenin varsayılanı.</summary>
+    Fake,
+
+    /// <summary>Gerçek Greenfield entegrasyonu, regtest BTCPay'e bağlı (müşterinin istediği iyzico-sandbox karşılığı).</summary>
+    Sandbox,
+
+    /// <summary>Gerçek Greenfield entegrasyonu, mainnet store'a bağlı.</summary>
+    Live
+}
+
+/// <summary>
 /// Ödeme modülünün tüm sayısal/konfigüre edilebilir değerleri (docs/05-payment.md
 /// Bölüm 2.4). GameConfig'in aksine bu değerler <c>appsettings.json</c>'daki
 /// "Payment" bölümünden <see cref="Microsoft.Extensions.Options.IOptions{TOptions}"/>
@@ -61,13 +81,32 @@ public class PaymentConfig
 
     // 🛠️ BTCPay Greenfield API bağlantı bilgileri — doküman Bölüm 2.4'te ayrıca
     // listelenmemiş ama IPaymentProvider'ın gerçek implementasyonu için zorunludur.
-    // Regtest/testnet erişilemediği için şu an FakePaymentProvider kullanılıyor
-    // (bkz. Providers/FakePaymentProvider.cs); bu alanlar gerçek entegrasyon için
-    // hazır tutulur.
-    public string BtcPayBaseUrl { get; set; } = "https://btcpay.example.local";
+    // 🔒 docs/21-payment-sandbox-e2e.md Bölüm 5/8: `Sandbox` → `Live` geçişinde
+    // değişen alanlar TAM OLARAK bunlardır (Mode ile birlikte) — koda dokunulmaz.
+    // Bu dosyadaki varsayılanlar yalnızca `Fake` mod içindir; `Sandbox`/`Live`'da
+    // biri boşsa uygulama başlamaz (Program.cs fail-fast). Değerler asla commit
+    // edilmez, user-secrets/ortam değişkeni ile verilir (06-coding-standards.md).
+    // 🐞 docs/21-payment-sandbox-e2e.md Aşama 6 (Bölüm 8) bulgusu: bu alanların
+    // varsayılanları önceden "https://btcpay.example.local" ve "dev-webhook-secret"
+    // gibi BOŞ OLMAYAN yer tutuculardı (appsettings.json'da da öyleydi). Bölüm 5'in
+    // fail-fast kuralı "boşsa başlama" dediği için, `Live` modunda WebhookSecret'ı
+    // vermeyi unutan bir operatörde uygulama HATA VERMEDEN başlıyor ve webhook
+    // imzalarını depoda herkese açık olan bu yer tutucuyla doğruluyordu — sahte bir
+    // "InvoiceSettled" webhook'u imzalayıp bakiye üretmek mümkün olurdu (sandbox'ta
+    // uygulamanın bu şekilde fiilen başladığı doğrulandı). Varsayılanlar artık boş:
+    // yer tutucu bir değer sessizce üretime sızamaz, fail-fast gerçekten devreye girer.
+    public string BtcPayBaseUrl { get; set; } = string.Empty;
     public string BtcPayApiKey { get; set; } = string.Empty;
     public string BtcPayStoreId { get; set; } = string.Empty;
-    public string WebhookSecret { get; set; } = "dev-webhook-secret";
+    public string WebhookSecret { get; set; } = string.Empty;
+
+    // 🛠️ docs/21-payment-sandbox-e2e.md Bölüm 5: ödeme sağlayıcısının çalışma
+    // modu. Önceki `UseFakeProviderInDevelopment` boolean'ı üç durumlu bir dünyayı
+    // ifade edemiyordu ve modu ASP.NET ortamına (Development/Production)
+    // yapıştırdığı için sandbox'ı ortamdan bağımsız çalıştırmayı zorlaştırıyordu.
+    // Tanımsızsa varsayılan `Fake`'tir (en güvenli varsayılan) — bkz. Program.cs'teki
+    // provider seçimi ve `Live` için fail-fast doğrulaması.
+    public PaymentProviderMode Mode { get; set; } = PaymentProviderMode.Fake;
 
     // 🛠️ PostgreSQL bağlantı dizesi — ayrı bir persistence katmanı (Bölüm "ayrı
     // katman"). Yerel geliştirme ortamında `wintowar` adlı bir veritabanına
@@ -77,4 +116,23 @@ public class PaymentConfig
     // api.Tests/TestSupport/PaymentDbContextFactory.cs) — gerçek Postgres
     // gerektirmeden hızlı çalışır.
     public string ConnectionString { get; set; } = "Host=localhost;Port=5432;Database=wintowar;Username=postgres;Password=postgres";
+
+    /// <summary>
+    /// 🔒 docs/21-payment-sandbox-e2e.md Bölüm 5 fail-fast kuralı: gerçek BTCPay'e
+    /// bağlanan modlarda (`Sandbox`/`Live`) eksik olan zorunlu alanların adlarını
+    /// döner; liste boş değilse uygulama başlatılmaz (bkz. Program.cs). Sessiz
+    /// fallback (eksik config'de `Fake`'e düşmek) kesinlikle yasaktır.
+    ///
+    /// Kural Sandbox ve Live için AYNIDIR — mod başına farklı bir doğrulama yazmak,
+    /// "Sandbox→Live geçişi config-only" garantisini bozardı.
+    /// </summary>
+    public IReadOnlyList<string> GetMissingBtcPayFieldNames()
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(BtcPayBaseUrl)) { missing.Add("Payment:BtcPayBaseUrl"); }
+        if (string.IsNullOrWhiteSpace(BtcPayApiKey)) { missing.Add("Payment:BtcPayApiKey"); }
+        if (string.IsNullOrWhiteSpace(BtcPayStoreId)) { missing.Add("Payment:BtcPayStoreId"); }
+        if (string.IsNullOrWhiteSpace(WebhookSecret)) { missing.Add("Payment:WebhookSecret"); }
+        return missing;
+    }
 }

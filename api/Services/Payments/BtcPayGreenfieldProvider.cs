@@ -9,15 +9,18 @@ namespace api.Services.Payments;
 /// <summary>
 /// BTCPay Server Greenfield REST API v2 entegrasyonu (docs/05-payment.md Bölüm 1.3,
 /// Bölüm 3 akış diyagramları — invoice oluşturma, payout/refund gönderimi, gerçek
-/// network fee sorgusu). Program.cs'te yalnızca Development dışı ortamlarda
-/// kaydedilir (Development'ta <see cref="FakePaymentProvider"/> kullanılır).
+/// network fee sorgusu). Program.cs'te <c>Payment:Mode</c> `Sandbox` veya `Live`
+/// olduğunda kaydedilir (`Fake` modda <see cref="FakePaymentProvider"/> kullanılır);
+/// bu iki mod arasında KOD farkı yoktur, yalnızca config değerleri değişir.
 ///
-/// 🚩 Bölüm 0.3 ön koşulu: bu sınıf gerçek bir BTCPay regtest/testnet instance'ına
-/// karşı ÇALIŞTIRILARAK doğrulanamadı — erişim yok. Endpoint yolları ve JSON alan
-/// adları Greenfield API v2'nin dokümante edilmiş sözleşmesine göre yazıldı; canlıya
-/// alınmadan önce gerçek bir BTCPay instance'ına karşı uçtan uca test edilmelidir
-/// (özellikle payment-methods yanıtındaki "destination"/"paymentLink" alan adları ve
-/// wallet/transactions ucunun sürüme göre değişebilecek şekli).
+/// ✔ docs/21-payment-sandbox-e2e.md Aşama 4-5: bu sınıf artık canlı bir BTCPay
+/// Server 2.4.2 instance'ına karşı (Litecoin regtest, sandbox/btcpay/) uçtan uca
+/// ÇALIŞTIRILARAK doğrulandı — gerçek invoice oluşturma, gerçek on-chain ödeme +
+/// webhook, `payment-methods` yanıtındaki "destination"/"paymentLink"/"totalPaid"
+/// alan adları ve `wallet/transactions` ucuyla gerçek on-chain gönderim dahil.
+/// (Aynı doğrulamada `paymentMethodId` alan adı ve `/api/v1/invoices/{id}/payment-methods`
+/// yolu teyit edildi.) Mainnet'e geçmeden önce yalnızca config ve
+/// `RequiredConfirmations` gözden geçirilmelidir.
 /// </summary>
 public class BtcPayGreenfieldProvider : IPaymentProvider
 {
@@ -66,7 +69,7 @@ public class BtcPayGreenfieldProvider : IPaymentProvider
     private async Task<BtcPayInvoicePaymentMethod> GetLtcPaymentMethodAsync(string invoiceId, CancellationToken cancellationToken)
     {
         var methods = await _httpClient.GetFromJsonAsync<List<BtcPayInvoicePaymentMethod>>(
-            $"/api/v1/stores/{_config.BtcPayStoreId}/invoices/{invoiceId}/payment-methods", JsonOptions, cancellationToken);
+            $"/api/v1/invoices/{invoiceId}/payment-methods", JsonOptions, cancellationToken);
 
         return methods?.FirstOrDefault(m => m.PaymentMethod.StartsWith("LTC", StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"BTCPay invoice {invoiceId} için LTC ödeme yöntemi bulunamadı.");
@@ -104,6 +107,16 @@ public class BtcPayGreenfieldProvider : IPaymentProvider
         return new ProviderTransferResult(transaction.TransactionHash, 0m);
     }
 
+    /// <summary>
+    /// Bölüm 1.7 gerçek E2E bulgusu: webhook payload'ında yok, bu yüzden invoice'ın
+    /// kendi payment-methods ucundan (gerçek "totalPaid" alanı) okunur.
+    /// </summary>
+    public async Task<decimal?> GetTotalPaidLtcAsync(string btcPayInvoiceId, CancellationToken cancellationToken)
+    {
+        var method = await GetLtcPaymentMethodAsync(btcPayInvoiceId, cancellationToken);
+        return method.TotalPaid is null ? null : decimal.Parse(method.TotalPaid, CultureInfo.InvariantCulture);
+    }
+
     public async Task<decimal?> GetActualNetworkFeeAsync(string btcPayTransactionId, CancellationToken cancellationToken)
     {
         using var response = await _httpClient.GetAsync(
@@ -128,9 +141,10 @@ public class BtcPayGreenfieldProvider : IPaymentProvider
     private record BtcPayInvoiceCheckout(int ExpirationMinutes, string[] PaymentMethods);
     private record BtcPayInvoiceResponse(string Id);
     private record BtcPayInvoicePaymentMethod(
-        [property: JsonPropertyName("paymentMethod")] string PaymentMethod,
+        [property: JsonPropertyName("paymentMethodId")] string PaymentMethod,
         [property: JsonPropertyName("destination")] string Destination,
-        [property: JsonPropertyName("paymentLink")] string PaymentLink);
+        [property: JsonPropertyName("paymentLink")] string PaymentLink,
+        [property: JsonPropertyName("totalPaid")] string? TotalPaid);
     private record BtcPayCreateTransactionRequest(BtcPayTransactionDestination[] Destinations);
     private record BtcPayTransactionDestination(string Destination, string Amount);
     private record BtcPayTransactionResponse(

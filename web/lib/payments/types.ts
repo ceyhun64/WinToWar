@@ -54,6 +54,12 @@ export interface WithdrawalRequestDto {
   createdAt: string;
 }
 
+/** docs/17-withdrawal-address-suggestions.md Bölüm 2: "Son kullanılan adresler" önerisi. */
+export interface WithdrawalAddressSuggestionDto {
+  address: string;
+  lastUsedAt: string;
+}
+
 export interface PaymentErrorResponse {
   code: string;
   message: string;

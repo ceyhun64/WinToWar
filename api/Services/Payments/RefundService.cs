@@ -47,6 +47,10 @@ public class RefundService
     /// Bağımsız/tekrar tetiklenebilir çağıranlar (ör. admin'in "manuel iade" butonu)
     /// bu metodu DEĞİL, aşağıdaki <see cref="SubmitAndPersistAsync"/>'i kullanmalı —
     /// o, aynı yarış durumuna karşı DB seviyesinde korunur.
+    ///
+    /// docs/16-wallet-balance-sync.md: bu metot WalletService.NotifyBalanceChangedAsync'i
+    /// ÇAĞIRMAZ — SaveChanges/commit gibi bildirim de çağıranın (PaymentService)
+    /// kendi transaction'ı commit olduktan sonraki sorumluluğudur.
     /// </summary>
     public async Task SubmitAsync(PaymentInvoice invoice, decimal amountUsd, RefundReason reason, CancellationToken cancellationToken)
     {
@@ -137,6 +141,9 @@ public class RefundService
 
         await _walletService.CreditAsync(invoice.PlayerId, amountUsd, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        // docs/16-wallet-balance-sync.md Bölüm 1 "Önemli": ancak commit'ten SONRA.
+        await _walletService.NotifyBalanceChangedAsync(invoice.PlayerId, cancellationToken);
 
         _logger.LogInformation("Refund işlendi: {InvoiceId}, {AmountUsd} USD, sebep={Reason}", invoice.Id, amountUsd, reason);
     }

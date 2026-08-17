@@ -4,6 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- docs/14-payment-sandbox.md Bölüm 3: testnet BTCPay secret'ları (API key,
+         webhook secret) yalnızca `dotnet user-secrets` üzerinden yerel makinede
+         tutulur, appsettings.json'a hardcode edilmez. -->
+    <UserSecretsId>598c808b-babe-4a14-bdb6-fcc3d3f74bef</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

@@ -26,7 +26,8 @@ public class RoomEntryServiceTests : IDisposable
         _timeProvider = new ManualTimeProvider(DateTimeOffset.UtcNow);
         _walletService = new WalletService(
             _db, new FixedPriceOracle(44.5m), new FakePaymentProvider(NullLogger<FakePaymentProvider>.Instance),
-            Options.Create(new PaymentConfig()), _timeProvider, NullLogger<WalletService>.Instance);
+            Options.Create(new PaymentConfig()), _timeProvider,
+            new PaymentEventNotifier(new FakeHubContext(), new FakeWalletHubContext()), NullLogger<WalletService>.Instance);
         _sut = new RoomEntryService(_matchManager, _walletService, NullLogger<RoomEntryService>.Instance);
     }
 

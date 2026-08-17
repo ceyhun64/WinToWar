@@ -327,15 +327,13 @@ public class PaymentService
         {
             processedEvent.PaymentInvoiceId = invoice.Id;
 
-            // Bölüm 2.1: yalnızca gösterim amaçlı ilerleme sayacı — invoice henüz
-            // terminal bir state'e ulaşmadıysa, gelen webhook'un bildirdiği onay
-            // sayısı öncekinden yüksekse güncellenir (hiçbir hesaplamada kullanılmaz,
-            // asıl eşik kontrolü aşağıda RequiredConfirmations ile ayrıca yapılır).
-            if (!StatusRankPolicy.IsTerminal(invoice.Status) && payload.Confirmations > invoice.CurrentConfirmations)
-            {
-                invoice.CurrentConfirmations = payload.Confirmations;
-            }
-
+            // 🛠️ docs/14-payment-sandbox.md gerçek regtest E2E bulgusu: BTCPay
+            // Greenfield webhook payload'ları hiçbir event tipinde üst seviyede
+            // sayısal bir "confirmations" alanı taşımıyor (yalnızca event tipi ve
+            // nested payment.status ile ilerleme bildiriliyor) — bu yüzden
+            // CurrentConfirmations artık webhook'tan beslenmiyor (sahte bir sayı
+            // üretmemek için); alan DB'deki varsayılan değerinde kalır. Asıl
+            // durum (Pending/Confirmed) her zaman invoice.Status'ten okunmalıdır.
             var incomingStatus = MapEventTypeToStatus(payload.Type);
 
             if (incomingStatus is null)
@@ -348,17 +346,11 @@ public class PaymentService
                     "Stale/out-of-order webhook ignored, current={Current} incoming={Incoming}, invoice={InvoiceId}",
                     invoice.Status, incomingStatus.Value, invoice.Id);
             }
-            else if (incomingStatus.Value == PaymentInvoiceStatus.Confirmed && payload.Confirmations < _config.RequiredConfirmations)
-            {
-                _logger.LogInformation(
-                    "Confirmation eşiği henüz sağlanmadı: {Confirmations}/{Required}, invoice={InvoiceId}",
-                    payload.Confirmations, _config.RequiredConfirmations, invoice.Id);
-            }
             else
             {
                 if (incomingStatus.Value == PaymentInvoiceStatus.Confirmed)
                 {
-                    await ApplyToleranceAndOverpaymentAsync(invoice, payload, cancellationToken);
+                    await ApplyToleranceAndOverpaymentAsync(invoice, cancellationToken);
                     invoice.ConfirmedAt = now;
                     invoiceJustConfirmed = true;
 
@@ -383,6 +375,16 @@ public class PaymentService
         // EventId'yle gelecek bambaşka bir event/entity için Add() "zaten izleniyor"
         // hatası verir.
         _db.Entry(processedEvent).State = EntityState.Detached;
+
+        // docs/16-wallet-balance-sync.md Bölüm 1 "Önemli": bildirim ancak yukarıdaki
+        // transaction commit olduktan SONRA gönderilir. Tek çağrı hem top-up
+        // krediyi hem de (varsa) ApplyToleranceAndOverpaymentAsync'in overpayment
+        // refund kredisini kapsar — ikisi de aynı invoice.PlayerId ve aynı
+        // transaction'a ait, mutlak bakiye tek okuma ile her ikisini de yansıtır.
+        if (invoiceJustConfirmed && invoice is not null)
+        {
+            await _walletService.NotifyBalanceChangedAsync(invoice.PlayerId, cancellationToken);
+        }
 
         if (invoiceJustConfirmed && invoice is not null && invoice.MatchId is not null)
         {
@@ -427,15 +429,34 @@ public class PaymentService
     /// fazla ödeme varsa fazlalık aynı kilitli kurla USD'ye çevrilip oyuncunun
     /// bakiyesine kredi olarak işlenir (RefundService.SubmitAsync, çağıranın
     /// SaveChanges'ı ile birlikte aynı transaction'da kalıcılaşır).
+    ///
+    /// 🛠️ docs/15-payment-flow-verification.md gerçek regtest E2E bulgusu: fiilen
+    /// ödenen tutar webhook payload'ında hiç yok (bkz. IPaymentProvider.
+    /// GetTotalPaidLtcAsync yorumu) — bu sorgu invoice onayının ASIL kritik adımı
+    /// değildir (bkz. Bölüm 1.3 "sunucu otoriterdir"), bu yüzden burada BTCPay'e
+    /// giden ek çağrı başarısız olursa invoice onayını BLOKLAMAZ; yalnızca bu
+    /// invoice için overpayment kontrolü o an atlanmış olur (loglanır) — kapsam
+    /// sınırlaması, rapora yazılır (bu modülde v10'dan beri ayrı bir reconciliation/
+    /// retry altyapısı yoktur, bkz. WalletService.ApproveWithdrawalAsync'teki aynı gerekçe).
     /// </summary>
-    private async Task ApplyToleranceAndOverpaymentAsync(PaymentInvoice invoice, BtcPayWebhookPayload payload, CancellationToken cancellationToken)
+    private async Task ApplyToleranceAndOverpaymentAsync(PaymentInvoice invoice, CancellationToken cancellationToken)
     {
-        if (payload.PaidAmountLtc is null)
+        decimal? paidLtcNullable;
+        try
+        {
+            paidLtcNullable = await _paymentProvider.GetTotalPaidLtcAsync(invoice.BtcPayInvoiceId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Ödenen tutar sorgulanamadı, overpayment kontrolü bu invoice için atlandı: {InvoiceId}", invoice.Id);
+            return;
+        }
+
+        if (paidLtcNullable is not { } paidLtc)
         {
             return;
         }
 
-        var paidLtc = decimal.Parse(payload.PaidAmountLtc, NumberStyles.Number, CultureInfo.InvariantCulture);
         var toleranceLtc = invoice.AmountLtc * _config.PaymentToleranceRate;
         var overpaymentLtc = paidLtc - invoice.AmountLtc - toleranceLtc;
 

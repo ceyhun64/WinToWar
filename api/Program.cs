@@ -135,17 +135,34 @@ builder.Services.AddHttpClient("BtcPay").ConfigureHttpClient((sp, client) =>
     client.DefaultRequestHeaders.Add("Authorization", $"token {paymentConfig.BtcPayApiKey}");
 });
 
-// 🛠️ Bölüm 0.3 ön koşulu: BTCPay regtest/testnet erişilemediği için Development'ta
-// sahte implementasyon kullanılır (bkz. FakePaymentProvider.cs). Development dışı
-// ortamlarda gerçek BtcPayGreenfieldProvider kayıtlıdır — 🚩 bu sınıf canlı bir
-// BTCPay instance'ına karşı çalıştırılarak doğrulanamadı (erişim yok), canlıya
-// almadan önce regtest/testnet'e karşı uçtan uca test edilmelidir.
-if (builder.Environment.IsDevelopment())
+// docs/21-payment-sandbox-e2e.md Bölüm 5: provider seçimi ASP.NET ortamına değil,
+// Payment:Mode (Fake/Sandbox/Live) enum'ına bağlıdır. Tanımsızsa Fake'tir.
+// 🔒 Sandbox ile Live arasında KOD FARKI YOKTUR — ikisi de aynı
+// BtcPayGreenfieldProvider'ı aynı şekilde kullanır, yalnızca config değerleri
+// (BtcPayBaseUrl/ApiKey/StoreId/WebhookSecret) farklıdır. Aşağıdaki tek dallanma
+// "sahte mi, gerçek mi" sorusunu ayırır; Sandbox'a özel bir davranış yoktur.
+var paymentConfigForProviderSelection = builder.Configuration.GetSection(PaymentConfig.SectionName).Get<PaymentConfig>() ?? new PaymentConfig();
+if (paymentConfigForProviderSelection.Mode == PaymentProviderMode.Fake)
 {
     builder.Services.AddSingleton<IPaymentProvider, FakePaymentProvider>();
 }
 else
 {
+    // 🔒 Bölüm 5 fail-fast: gerçek bir BTCPay'e bağlanacak her modda (Sandbox ve
+    // Live) bağlantı bilgileri eksikse uygulama BAŞLAMAZ. Sessizce Fake'e düşmek
+    // (gerçek para taşıyan bir sistemde prod'a sahte provider'la çıkmak) en
+    // tehlikeli senaryodur, bu yüzden kesinlikle yasaktır. Doğrulama Sandbox ve
+    // Live için AYNIDIR — mod başına farklı bir kural yazmak, "Sandbox→Live geçişi
+    // config-only" garantisini bozardı.
+    var missingBtcPayFields = paymentConfigForProviderSelection.GetMissingBtcPayFieldNames();
+
+    if (missingBtcPayFields.Count > 0)
+    {
+        throw new InvalidOperationException(
+            $"Payment:Mode={paymentConfigForProviderSelection.Mode} için zorunlu BTCPay ayarları eksik: " +
+            $"{string.Join(", ", missingBtcPayFields)}. Uygulama sahte provider'a düşmez, başlatılmıyor.");
+    }
+
     builder.Services.AddSingleton<IPaymentProvider, BtcPayGreenfieldProvider>();
 }
 
@@ -279,6 +296,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<GameHub>("/hub/game");
+app.MapHub<WalletHub>("/hub/wallet");
 
 // docs/07-pages.md `/durum`: her bileşen için basit bir health-check — karmaşık
 // bir monitoring sistemi kurulmaz (YAGNI), yalnızca API'nin ayakta olduğunu ve

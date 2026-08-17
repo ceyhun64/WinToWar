@@ -69,6 +69,10 @@ public class FakePaymentProvider : IPaymentProvider
         return Task.FromResult<decimal?>(SimulatedActualFeeLtc);
     }
 
+    /// <summary>🛠️ Fake modda gerçek bir on-chain ödeme yok, dolayısıyla overpayment simüle edilmez.</summary>
+    public Task<decimal?> GetTotalPaidLtcAsync(string btcPayInvoiceId, CancellationToken cancellationToken) =>
+        Task.FromResult<decimal?>(null);
+
     private static string GenerateFakeAddress()
     {
         const string charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";

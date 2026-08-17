@@ -17,6 +17,15 @@ public class FakeHubContext : IHubContext<GameHub>
     public IGroupManager Groups { get; } = new FakeGroupManager();
 }
 
+/// <summary>docs/16-wallet-balance-sync.md: PaymentEventNotifier'ın IHubContext&lt;WalletHub&gt; bağımlılığı için, FakeHubContext ile aynı desen.</summary>
+public class FakeWalletHubContext : IHubContext<WalletHub>
+{
+    public FakeClientProxy Proxy { get; } = new();
+
+    public IHubClients Clients => new FakeHubClients(Proxy);
+    public IGroupManager Groups { get; } = new FakeGroupManager();
+}
+
 public class FakeHubClients : IHubClients
 {
     private readonly FakeClientProxy _proxy;

@@ -19,7 +19,7 @@ import {
   signOut,
   subscribeToSession,
 } from "@/lib/identity";
-import { getWalletBalance } from "@/lib/payments/api";
+import { useWallet } from "@/lib/payments/WalletProvider";
 import Image from "next/image";
 
 const GUEST_NAV_LINKS = [{ href: "/kurallar", label: "Kurallar" }];
@@ -39,19 +39,11 @@ const PLAYER_NAV_LINKS = [
 export function Header({ minimal = false }: { minimal?: boolean }) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const [balanceUsd, setBalanceUsd] = useState<string | null>(null);
+  const { balanceUsd } = useWallet();
 
   useEffect(() => {
     function syncSession() {
-      if (!isSignedIn()) {
-        setDisplayName(null);
-        setBalanceUsd(null);
-        return;
-      }
-      setDisplayName(getStoredDisplayName());
-      getWalletBalance()
-        .then((dto) => setBalanceUsd(dto.balanceUsd))
-        .catch(() => setBalanceUsd(null));
+      setDisplayName(isSignedIn() ? getStoredDisplayName() : null);
     }
 
     ensureSessionLoaded().then(syncSession);
@@ -100,7 +92,7 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
               <div className="flex items-center gap-3">
                 <Link
                   href="/cuzdan"
-                  className="rounded-2xl px-2.5 py-1 text-sm font-medium tabular-nums hover:bg-muted"
+                  className="rounded-2xl px-2.5 py-1 text-sm font-medium tabular-nums hover:bg-muted text-yellow-500"
                 >
                   {balanceUsd !== null ? (
                     `$${balanceUsd}`

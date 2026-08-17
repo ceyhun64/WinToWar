@@ -74,6 +74,17 @@ public class WithdrawalRequestDto
     public required string CreatedAt { get; init; }
 }
 
+/// <summary>
+/// docs/17-withdrawal-address-suggestions.md Bölüm 2: "/cuzdan" Para Çek panelinde
+/// oyuncunun daha önce fiilen zincire gönderilmiş çekimlerinden türetilen, salt-okunur
+/// öneri. Adres/işlem dışında hiçbir kullanıcı bilgisi taşımaz.
+/// </summary>
+public class WithdrawalAddressSuggestionDto
+{
+    public required string Address { get; init; }
+    public required string LastUsedAt { get; init; }
+}
+
 public class PaymentErrorResponse
 {
     public required string Code { get; init; }

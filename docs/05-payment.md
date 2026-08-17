@@ -8,6 +8,8 @@
 
 > ⚠️ **v10 — kritik değişiklik (2026-08-08):** Kullanıcı, `/lobi`'de her oda girişinde (ve top-up sırasında) LTC adresi sorulmasının kötü bir mimari olduğunu belirtip şu hedef mimariyi verdi: **(1)** oyuna girişte hiçbir zaman LTC adresi istenmez — bakiye yeterliyse `Wallet.BalanceUsd`'den doğrudan düşülür, yetmezse sunucu otomatik bir top-up invoice'ı açar (BTCPay'in kendi ürettiği adres/QR ile, kullanıcıdan adres istenmeden); **(2)** kazananın parası artık on-chain LTC olarak gönderilmez, doğrudan `Wallet.BalanceUsd`'ye kredi olarak işlenir; **(3)** LTC adresi **yalnızca** `/cuzdan`'daki para çekme (`WithdrawalRequest.DestinationLtcAddress`) sırasında, oyuncu kendi isteğiyle girer. Bunun doğal sonucu olarak Payout/Refund artık BTCPay'e giden ayrı bir on-chain gönderim değil, senkron bir bakiye kredisidir — bu yüzden `PaymentInvoice.PayoutAddress`, `Wallet.PayoutAddress`, `PayoutRecipient.PayoutAddress/NetworkFeeLtc/BtcPayTransactionId`, `Refund.AmountLtc/BtcPayTransactionId`, tüm payout/refund retry+reconciliation makinesi (`ReconciliationService`, `ReconciliationLock`) ve buna bağlı `PayoutStatus`/`RefundStatus` state machine'leri **tamamen kaldırıldı**. Aşağıdaki Bölüm 1.5, 1.9 (RoomEntryOutcome notu), 2.2, 2.6, 3.2 ve 5.2'nin on-chain-gönderim odaklı içeriği bu v10 kararıyla **süpersede edilmiştir** — güncel davranış için `api/Services/Payments/PayoutService.cs` ve `RefundService.cs`'in kod-içi yorumları tek doğruluk kaynağıdır. v9'un geri kalanı (değişken havuz, yuvarlama disiplini, çoklu-kazanan veri modeli, `LobbyFillTimeoutSeconds=300`) değişmeden geçerlidir.
 
+> 🔧 **v10 kapsam düzeltmesi (2026-08-17, `docs/21-payment-sandbox-e2e.md` denetiminde bulundu):** Yukarıdaki v10 notu süpersede edilen bölümleri "1.5, 1.9, 2.2, 2.6, 3.2 ve 5.2" olarak sayıyordu — **liste eksikti.** Aynı v10 kararının geçersiz kıldığı ama banner almamış bölümler tespit edilip işaretlendi: **Bölüm 0.2 (madde 7-9), 2.4 (10 ölü config alanı), 5.3 (`Refund.Status` makinesi), 9 (on-chain payout test senaryoları), 10 (retry/jitter/reconciliation paragrafı), 11 (2 ölçülemez DoD maddesi) ve 12.** Bu bölümlerde hiçbir metin **silinmedi**; geçersiz kalan kısımların üstü çizilip "v10'da kaldırıldı — kodda karşılığı yoktur" notu eklendi, böylece hem tarihsel bağlam hem de mevcut durum birlikte okunabiliyor. Kaymanın kök nedeni, `docs/`'un o tarihte git'te izlenmiyor olmasıydı (artık izleniyor, bkz. commit `c3eb01c`). Ayrıca v10'un bıraktığı tek gerçek fonksiyonel boşluk (`Sent`'te asılı kalan `WithdrawalRequest`) ayrı bir görev dosyasına alındı: **`docs/22-withdrawal-reconciliation.md`**.
+
 Müşterinin verdiği tek gerçek karar kalemleri: **(1) ödeme LTC ile yapılacak, (2) komisyon %10 (kazananın havuzundan), (3) Standart oda giriş ücreti kişi başı $1 USD, (4) VIP odada giriş ücreti ve oyuncu sayısını (2-12) kurucu belirler, (5) bakiye arayüzde USD gösterilir, (6) eşleşme zaman aşımı 5 dakika + kullanıcı seçimi (iptal/bekle), (7) ücretsiz Practice modu vardır.** `Payout` veri modeli çoklu-kazanan (beraberlik) senaryosunu destekler — maç-bazlı `Payout` (agregatör) + kazanan-bazlı `PayoutRecipient` (1-N) ayrımıyla (bkz. Bölüm 2.2). Yuvarlama yalnızca tek seferlik, persist anında yapılır (Bölüm 2.3); network fee yalnızca gerçekleşen (actual) değerle kalıcı kayda geçer (Bölüm 2.6).
 
 Bu modül, ana oyun motorundan (`docs/01-workflow-rules.md`, `docs/02-architecture.md`, `docs/03-game-rules.md`) **tamamen ayrı** bir katman olarak inşa edilecek.
@@ -28,9 +30,9 @@ Bu modül, ana oyun motorundan (`docs/01-workflow-rules.md`, `docs/02-architectu
 4. State machine'ler + **monotonluk guard'ı** (Bölüm 5)
 5. `IPriceOracle` + cache + stale-cache politikası + single-flight + fallback zinciri (Bölüm 1.2)
 6. `PaymentService` (invoice oluşturma, expiry senkronu, webhook doğrulama + event idempotency + monotonluk kontrolü, transaction disiplini, BIP-21 üretimi)
-7. `PayoutService` (network fee — yalnızca actual persist, retry+backoff+jitter)
-8. `RefundService` (retry+backoff+jitter)
-9. Reconciliation job (distributed lock + tarama penceresi)
+7. ~~`PayoutService` (network fee — yalnızca actual persist, retry+backoff+jitter)~~ → **v10'da kaldırıldı — kodda karşılığı yoktur.** `PayoutService` artık senkron bir `Wallet.BalanceUsd` kredisidir; network fee/retry/backoff adımı yoktur (bkz. giriş bölümündeki v10 notu).
+8. ~~`RefundService` (retry+backoff+jitter)~~ → **v10'da kaldırıldı — kodda karşılığı yoktur.** Aynı gerekçe: refund da senkron bir bakiye kredisidir.
+9. ~~Reconciliation job (distributed lock + tarama penceresi)~~ → **v10'da kaldırıldı — kodda karşılığı yoktur.** `ReconciliationService` ve `ReconciliationLock` commit `b6961fa` ile silinmiştir; `ReconciliationLocks` tablosu da aynı migration'da (`20260808065254_PayoutRefundWalletCredit`) drop edilmiştir. ⚠️ Bunun bilinen sonucu: `WithdrawalRequest` `Sent` durumundayken süreç çökerse kaydı otomatik kapatacak bir mekanizma yoktur — bu boşluk **ayrı ve dar kapsamlı** bir görevle ele alınır: bkz. `docs/22-withdrawal-reconciliation.md`.
 10. SignalR event entegrasyonu
 11. Oyun akışına entegrasyon
 12. Frontend
@@ -220,7 +222,20 @@ Bölüm 1.6'daki "İptal Et/Beklemeye Devam Et" seçimi yalnızca `LobbyFillTime
 
 ### 2.4 `PaymentConfig` — Tam Alan Listesi
 
-(v6 ile aynı liste + 🛠️ WinToWar'ın oda modeli için güncellenen `PlayersPerMatch` (Standart’ta =4 sabit, VIP’de `Room.MaxPlayers`'tan okunur — artık `PaymentConfig`'te sabit bir sayı değil, `Room` entity'sinden gelen bir parametre) ve `LobbyFillTimeoutSeconds` (=300, `GameConfig`'teki değerle aynı, tek kaynaktan okunur) — `EntryFeeUsd` de aynı şekilde Standart’ta sabit $1, VIP'de `Room.EntryFeeUsd`'den okunur — `PriceCacheFreshSeconds`, `PriceCacheStaleMaxSeconds`, `PriceQuoteValiditySeconds`, `PriceOracleTimeoutSeconds`, `PaymentToleranceRate`, `RefundOverpaymentThresholdUsd`, `RequiredConfirmations`, `MatchmakingTimeoutSeconds`, `WebhookSignatureHeader`, `WebhookMaxAgeSeconds`, `PayoutRetryCount`, `PayoutRetryBaseDelaySeconds`, `PayoutRetryJitterSeconds`, `RefundRetryCount`, `RefundRetryBaseDelaySeconds`, `RefundRetryJitterSeconds`, `ReconciliationIntervalSeconds`, `ReconciliationLockTimeoutSeconds`, `ReconciliationScanWindowMinutes`, `NetworkFeeResponsibility`, `WebhookEventRetentionDays`. `sha256=` prefix config'de değil, sabit kod içinde.)
+> ⚠️ **v10'da kısmen süpersede edildi** (bkz. giriş bölümündeki v10 notu): Aşağıdaki liste v9'a aittir ve on-chain payout/refund gönderimini varsayan **10 alanı** hâlâ içeriyor. Bu alanların hiçbirinin `api/PaymentConfig.cs`'te karşılığı **yoktur** (canlı doğrulandı, bkz. `docs/21-payment-sandbox-e2e.md` raporu). Liste tarihsel bağlam için **silinmemiş**, ölü alanların üstü çizilmiştir. Güncel ve bağlayıcı alan listesi için tek doğruluk kaynağı `api/PaymentConfig.cs`'tir.
+
+(v6 ile aynı liste + 🛠️ WinToWar'ın oda modeli için güncellenen `PlayersPerMatch` (Standart’ta =4 sabit, VIP’de `Room.MaxPlayers`'tan okunur — artık `PaymentConfig`'te sabit bir sayı değil, `Room` entity'sinden gelen bir parametre) ve `LobbyFillTimeoutSeconds` (=300, `GameConfig`'teki değerle aynı, tek kaynaktan okunur) — `EntryFeeUsd` de aynı şekilde Standart’ta sabit $1, VIP'de `Room.EntryFeeUsd`'den okunur — `PriceCacheFreshSeconds`, `PriceCacheStaleMaxSeconds`, `PriceQuoteValiditySeconds`, `PriceOracleTimeoutSeconds`, `PaymentToleranceRate`, `RefundOverpaymentThresholdUsd`, `RequiredConfirmations`, ~~`MatchmakingTimeoutSeconds`~~, `WebhookSignatureHeader`, `WebhookMaxAgeSeconds`, ~~`PayoutRetryCount`~~, ~~`PayoutRetryBaseDelaySeconds`~~, ~~`PayoutRetryJitterSeconds`~~, ~~`RefundRetryCount`~~, ~~`RefundRetryBaseDelaySeconds`~~, ~~`RefundRetryJitterSeconds`~~, ~~`ReconciliationIntervalSeconds`~~, ~~`ReconciliationLockTimeoutSeconds`~~, ~~`ReconciliationScanWindowMinutes`~~, `NetworkFeeResponsibility`, `WebhookEventRetentionDays`. `sha256=` prefix config'de değil, sabit kod içinde.)
+
+**Üstü çizili 10 alan — v10'da kaldırıldı, kodda karşılığı yoktur:**
+
+| Alan | Neden yok |
+| --- | --- |
+| `PayoutRetryCount`, `PayoutRetryBaseDelaySeconds`, `PayoutRetryJitterSeconds` | Payout artık senkron bir bakiye kredisidir; tekrar denenecek bir dış çağrı yoktur |
+| `RefundRetryCount`, `RefundRetryBaseDelaySeconds`, `RefundRetryJitterSeconds` | Aynı gerekçe (refund da senkron kredi) |
+| `ReconciliationIntervalSeconds`, `ReconciliationLockTimeoutSeconds`, `ReconciliationScanWindowMinutes` | `ReconciliationService`/`ReconciliationLock` commit `b6961fa` ile silindi |
+| `MatchmakingTimeoutSeconds` | Zaman aşımı tek kaynaktan `GameConfig.LobbyFillTimeoutSeconds`'ten okunur (Bölüm 1.6) |
+
+🔒 **Kodda fiilen var olan alanlar** (bu bölümün geçerli kısmı): `CommissionRate`, `MinDepositUsd`, `MinWithdrawalUsd`, `MaxVipEntryFeeUsd`, `PriceCacheFreshSeconds`, `PriceCacheStaleMaxSeconds`, `PriceQuoteValiditySeconds`, `PriceOracleTimeoutSeconds`, `PaymentToleranceRate`, `RefundOverpaymentThresholdUsd`, `RequiredConfirmations`, `WebhookSignatureHeader`, `WebhookMaxAgeSeconds`, `NetworkFeeResponsibility` (yalnızca dokümantasyon etiketi), `WebhookEventRetentionDays`, `Mode` (🆕 `Fake`/`Sandbox`/`Live` — bkz. `docs/21-payment-sandbox-e2e.md` Bölüm 5), `BtcPayBaseUrl`, `BtcPayApiKey`, `BtcPayStoreId`, `WebhookSecret`, `ConnectionString`.
 
 ### 2.5 Kültür ve Serileştirme 🔒
 
@@ -367,12 +382,17 @@ PayoutPending(rank=0) → PayoutSent(rank=1) → Completed(rank=2)
 
 ### 5.3 `Refund.Status`
 
+> ⚠️ **v10'da süpersede edildi** (bkz. giriş bölümündeki v10 notu): Bu state machine **tamamen kaldırıldı — kodda karşılığı yoktur.** `api/Models/Payments/Refund.cs` bir `Status` alanı taşımaz; entity yalnızca `Id`, `PaymentInvoiceId`, `PlayerId`, `AmountUsd`, `Reason`, `CreatedAt` alanlarından oluşan bir **denetim kaydıdır**. Refund artık ayrı bir on-chain gönderim değil, `WalletService.CreditAsync` ile aynı transaction içinde uygulanan senkron bir bakiye kredisidir; ara durum (`RefundPending`/`RefundSent`) hiç oluşmadığı için bir durum makinesine ihtiyaç yoktur. Aşağıdaki diyagram tarihsel bağlam için korunmuştur.
+
 ```
+(v10'da geçersiz — kodda böyle bir state machine yok)
 RefundPending(rank=0) → RefundSent(rank=1) → Completed(rank=2)
        │                       │
        │                       └──→ Failed → (retry) → RefundSent
        └──→ Failed → (retry) → RefundPending
 ```
+
+🔒 **v10'da geçerli olan tek durum makinesi** `WithdrawalRequest.Status`'tür (`Pending`→`Approved`→`Sent`→`Completed` / `Rejected`/`Failed`, bkz. Bölüm 1.9) — çünkü sistemden para çıkaran tek gerçek async/on-chain akış odur.
 
 ### 5.4 Monotonluk Kuralı (v7'de eklendi) 🔒
 
@@ -417,15 +437,17 @@ RefundPending(rank=0) → RefundSent(rank=1) → Completed(rank=2)
 
 ## 9. TEST SENARYOLARI 🔒
 
+> ⚠️ **v10'da kısmen süpersede edildi** (bkz. giriş bölümündeki v10 notu): Aşağıdaki listede on-chain payout gönderimini varsayan senaryoların (network fee, `PayoutRecipient.Status`/retry, kazanan başına ayrı BTCPay işlemi) **kodda karşılığı yoktur** — payout artık senkron bir bakiye kredisidir. Bu senaryolar silinmemiş, üstleri çizilerek "v10'da geçersiz" olarak işaretlenmiştir; geri kalan senaryolar aynen geçerlidir.
+
 v6'daki tüm senaryolara ek olarak:
 
 - [ ] Sırasız webhook: önce `Confirmed`'e geçiren event işlenir, ardından daha düşük rank'li (ör. yeniden `Pending` bildiren) bir event gelir — state `Confirmed`'de kalır, geçiş reddedilir ve loglanır
 - [ ] Terminal state'e (`Expired`/`Failed`/`Completed`) ulaşmış bir kayda **hiçbir** yeni webhook state değiştiremiyor
 - [ ] Reddedilen geriye dönük webhook yine de `ProcessedWebhookEvents`'e yazılıyor (aynı event tekrar gelirse ikinci kez "ignored" logu üretmiyor, direkt no-op)
-- [ ] Çok adımlı bir payout hesaplamasında (`TotalPoolLtc → CommissionLtc → GrossPerWinnerLtc → AmountLtc(tahmini fee ile) → PayoutRecipient.NetworkFeeLtc(gerçek fee, sonradan) → PayoutRecipient.AmountLtc(değişmez)`) ara adımlarda `Round` çağrılmadığı, yalnızca son persist adımında yuvarlandığı — bilinen bir girdi/çıktı çiftiyle doğrulanıyor (ara değerlerin tam hassasiyetle taşındığı bir birim testiyle)
-- [ ] `PayoutRecipient.NetworkFeeLtc` ilk oluşturulduğunda `null`, yalnızca o kazanana ait reconciliation'dan gelen gerçek fee ile bir kez dolduruluyor; hiçbir zaman tahmini bir değerle DB'ye yazılmıyor
-- [ ] **Çoklu kazanan (N>1) senaryosu uçtan uca çalışıyor:** `Match.Winners` 2+ oyuncu içerdiğinde, `Payout` altında 2+ `PayoutRecipient` satırı oluşuyor, her biri kendi `PayoutAddress`'ine, kendi ayrı BTCPay işlemiyle, havuzun eşit bölünmüş payını alıyor; `(PayoutId, WinnerPlayerId)` unique constraint'i ihlal edilmiyor
-- [ ] Bir `PayoutRecipient` `Failed`/retry döngüsündeyken, aynı `Payout`'a bağlı diğer `PayoutRecipient` satırları bundan etkilenmeden bağımsız ilerliyor; `Payout.Status` yalnızca tüm çocuklar `Completed` olduğunda `Completed`'e geçiyor
+- [ ] ~~Çok adımlı bir payout hesaplamasında (`TotalPoolLtc → CommissionLtc → GrossPerWinnerLtc → AmountLtc(tahmini fee ile) → PayoutRecipient.NetworkFeeLtc(gerçek fee, sonradan) → PayoutRecipient.AmountLtc(değişmez)`) ara adımlarda `Round` çağrılmadığı...~~ → **v10'da geçersiz** (fee/LTC zinciri yok). **Yerine geçen, hâlâ geçerli senaryo:** çok adımlı USD zincirinde (`TotalPoolUsd → CommissionUsd → GrossPerWinnerUsd → PayoutRecipient.AmountUsd`) ara adımlarda `Round` çağrılmadığı, yalnızca persist anında bir kez yuvarlandığı doğrulanır (Bölüm 2.3 kuralı aynen geçerlidir).
+- [ ] ~~`PayoutRecipient.NetworkFeeLtc` ilk oluşturulduğunda `null`, yalnızca o kazanana ait reconciliation'dan gelen gerçek fee ile bir kez dolduruluyor~~ → **v10'da geçersiz — `NetworkFeeLtc` alanı ve reconciliation kodda yoktur.**
+- [ ] **Çoklu kazanan (N>1) senaryosu uçtan uca çalışıyor:** `Match.Winners` 2+ oyuncu içerdiğinde, `Payout` altında 2+ `PayoutRecipient` satırı oluşuyor ve her biri havuzun eşit bölünmüş payını alıyor; `(PayoutId, WinnerPlayerId)` unique constraint'i ihlal edilmiyor. *(v10 uyarlaması: ~~"her biri kendi `PayoutAddress`'ine, kendi ayrı BTCPay işlemiyle"~~ kısmı geçersizdir — pay artık her kazananın `Wallet.BalanceUsd`'sine kredilenir.)*
+- [ ] ~~Bir `PayoutRecipient` `Failed`/retry döngüsündeyken, aynı `Payout`'a bağlı diğer satırlar bundan etkilenmeden ilerliyor; `Payout.Status` yalnızca tüm çocuklar `Completed` olduğunda `Completed`'e geçiyor~~ → **v10'da geçersiz — `Payout`/`PayoutRecipient` artık `Status` alanı taşımaz**, tüm krediler tek transaction içinde ya hep birlikte uygulanır ya hiç uygulanmaz (kısmi tamamlanma durumu yoktur).
 - [ ] Single-flight: eşzamanlı 50 istek, boş cache — dış API'ye yalnızca 1 çağrı (v6'dan devam)
 - [ ] `PriceOracleSource` cache'ten dönen kurlarda dahi gerçek provider adını koruyor (v6'dan devam)
 
@@ -433,7 +455,11 @@ v6'daki tüm senaryolara ek olarak:
 
 ## 10. UÇ DURUMLAR VE HATA YÖNETİMİ 🔒
 
-(v6 ile aynı — retry+jitter, reconciliation kapsamı, son çare senaryosu. Ek olarak: reconciliation job'un `PayoutRecipient.NetworkFeeLtc`'yi doldurma adımı da artık yalnızca `null` olan kayıtlar için, **kazanan bazında** çalışır — zaten dolu bir kayıt üzerine tekrar yazma yapılmaz, bu da kendi başına bir idempotency garantisidir; N>1 senaryoda reconciliation her `PayoutRecipient`'ı ayrı ayrı tarar, biri dolduruldu diye diğerleri atlanmaz.)
+> ⚠️ **v10'da süpersede edildi:** Aşağıdaki paragrafın retry/jitter/reconciliation içeriğinin **kodda karşılığı yoktur** (bkz. Bölüm 0.2 madde 7-9 ve Bölüm 2.4'teki ölü alan tablosu). Payout/refund senkron bakiye kredisi olduğundan tekrar denenecek bir dış çağrı, dolayısıyla bir mutabakat taraması da yoktur. Tarihsel bağlam için korunmuştur.
+
+~~(v6 ile aynı — retry+jitter, reconciliation kapsamı, son çare senaryosu. Ek olarak: reconciliation job'un `PayoutRecipient.NetworkFeeLtc`'yi doldurma adımı da artık yalnızca `null` olan kayıtlar için, **kazanan bazında** çalışır — zaten dolu bir kayıt üzerine tekrar yazma yapılmaz, bu da kendi başına bir idempotency garantisidir; N>1 senaryoda reconciliation her `PayoutRecipient`'ı ayrı ayrı tarar, biri dolduruldu diye diğerleri atlanmaz.)~~
+
+- ⚠️ **v10'un bıraktığı bilinen boşluk (yeni):** Reconciliation kaldırıldığı için, `WalletService.ApproveWithdrawalAsync` içinde `Sent` yazımı ile `Completed`/`Failed` yazımı arasında süreç çökerse `WithdrawalRequest` kalıcı olarak `Sent`'te asılı kalır ve onu kapatacak otomatik bir mekanizma yoktur. Bu boşluk, v10 kararını geri almadan (payout/refund state machine'leri, retry/backoff ve `ReconciliationLock` **geri getirilmeden**) dar kapsamlı ayrı bir görevle ele alınır: **`docs/22-withdrawal-reconciliation.md`**.
 
 - 🛠️ **Maç ortasında disconnect/terk eden oyuncunun bakiyesi (08-eksik-alan.md'den taşındı):** Bu sorunun ekonomik cevabı zaten Bölüm 1 ve `03-game-rules.md`'deki mekaniklerin doğal bir sonucudur, ayrı bir refund akışı **gerekmez**: giriş ücreti maça başlarken tahsil edilip `TotalPool`'a girmiştir; terk eden oyuncu `03-game-rules.md` Bölüm 10'daki `AbandonmentTimeoutSeconds` kuralıyla elenmiş sayılır, bölgeleri nötrleşir (bkz. Bölüm 8'e eklenen not), ödediği giriş ücreti **iade edilmez** ve havuzda kalıp maçı bitiren kazanana gider — tıpkı savaşarak elenen bir oyuncu gibi muamele görür, "terk etme" ayrı bir finansal durum değildir. ❓ Müşteriye doğrulatılmalı: kasıtlı terk ile bağlantı sorunu nedeniyle terk arasında (ör. `AbandonmentTimeoutSeconds` içinde geri dönerse) bir ayrım/kısmi iade isteniyor mu, yoksa bu basit "iade yok" kuralı yeterli mi?
 - 🚩❓ **Teknik arıza kaynaklı iade politikası (08-eksik-alan.md'den taşındı):** Sunucu çökmesi, BTCPay kesintisi vb. platform kaynaklı bir arıza maçı/ödemeyi etkilerse — 🛠️ **varsayım:** otomatik iade **yapılmaz**, `SupportTicket` üzerinden (bkz. `07-pages.md` `/destek`) manuel admin onaylı iade akışı işletilir (`AdminPaymentsController` zaten mevcut `Refund` altyapısını kullanır, bkz. Bölüm 2). Gerekçe: platform arızasının gerçekten oyuncudan kaynaklanmadığını otomatik ayırt edecek güvenilir bir sinyal yok; yanlış otomatik iade, kaybeden bir oyuncunun "bağlantım koptu" diye sahte iddiada bulunmasına kapı aralar. Bu bir mühendislik tercihi değil, müşterinin risk iştahına bağlı bir iş kararıdır — ❓ doğrulanmalı.
@@ -450,13 +476,17 @@ v6'daki tüm senaryolara ek olarak:
 
 ## 11. KABUL KRİTERLERİ (DEFINITION OF DONE)
 
+> ⚠️ **v10'da kısmen süpersede edildi:** Aşağıdaki iki madde, karşılığı olan mekanizma v10'da kaldırıldığı için **artık ölçülemez** ve bir gereklilik olarak **düşmüştür** — üstleri çizilip `[x]` ile işaretlenmiştir ki bu checklist tekrar tamamlanabilir (ölçülebilir) olsun:
+> `PayoutRecipient.NetworkFeeLtc` (alan yok) ve "retry gecikmeleri jitter içeriyor" (retry yok).
+> Bu iki madde "sağlanamadı" olarak sayılmaz; geri kalan tüm maddeler aynen geçerlidir ve sağlanmalıdır.
+
 - [ ] `dotnet build` / `npm run build` hatasız.
 - [ ] Bölüm 3'teki tüm akışlar regtest/testnet üzerinde uçtan uca doğrulanmış.
 - [ ] Bölüm 9'daki tüm test senaryoları geçiyor.
 - [ ] **Aynı cache miss sırasında yalnızca tek dış API çağrısı yapılır** (single-flight doğrulanmış).
 - [ ] **Payment state machine geriye dönmez** — `StatusRank` kontrolü tüm webhook işleme kodunda uygulanmış.
 - [ ] **`PriceOracleSource` cache nedeniyle değişmez; gerçek provider saklanır** — `"Cache"` değeri hiçbir yerde oluşmuyor.
-- [ ] **`PayoutRecipient.NetworkFeeLtc` olarak yalnızca gerçekleşen (actual) fee persist edilir** — tahmini değer hiçbir zaman DB'ye yazılmıyor, yalnızca geçici hesaplama girdisi olarak kullanılıyor.
+- [x] ~~**`PayoutRecipient.NetworkFeeLtc` olarak yalnızca gerçekleşen (actual) fee persist edilir** — tahmini değer hiçbir zaman DB'ye yazılmıyor.~~ → **v10'da geçersiz**, ölçülemez: `NetworkFeeLtc` alanı kodda yoktur (payout on-chain gönderim değildir). Bu madde bir gereklilik olarak **düşmüştür**, "sağlanamadı" olarak sayılmaz.
 - [ ] Yuvarlama yalnızca kalıcılaştırma sınırında, tek seferde yapılıyor; ara adımlarda `Round` çağrısı yok.
 - [ ] `ProcessedWebhookEvents` tablosu var, monotonluk kontrolüyle birlikte çalışıyor.
 - [ ] Oyuncu `Match.Status = Lobby` iken `LeaveLobby` çağırdığında tam otomatik refund tetikleniyor; `Countdown`/`Playing` durumunda bu aksiyon reddediliyor.
@@ -465,7 +495,7 @@ v6'daki tüm senaryolara ek olarak:
 - [ ] **Practice odalarda ödeme akışı hiç tetiklenmiyor** — `PaymentInvoice`/`Payout`/`PayoutRecipient` satırı oluşmuyor, katılımda bakiye kontrolü yapılmıyor.
 - [ ] **Wallet modeli çalışıyor:** Bir top-up invoice (`MatchId=null`) onaylandığında `Wallet.BalanceUsd` artıyor; odaya katılırken bakiye yeterliyse yeni bir LTC işlemi açılmadan doğrudan bakiyeden düşülüyor; `WithdrawalRequest` oluşturulduğunda bakiye anında düşüyor, `Failed`/`Rejected` olduğunda geri ekleniyor; `Wallet.BalanceUsd` hiçbir senaryoda negatife düşmüyor.
 - [ ] Ödeme modülünde hiçbir yerde doğrudan `DateTime.UtcNow` çağrısı yok.
-- [ ] Retry gecikmeleri jitter içeriyor.
+- [x] ~~Retry gecikmeleri jitter içeriyor.~~ → **v10'da geçersiz**, ölçülemez: payout/refund'da retry mekanizması yoktur (senkron kredi). Bu madde bir gereklilik olarak **düşmüştür**, "sağlanamadı" olarak sayılmaz.
 - [ ] Parasal DTO alanları açıkça `string` tipinde.
 - [ ] Mainnet'e geçilmemiş; rapor bu durumu belirtiyor.
 - [ ] Seçilen tüm 🛠️ varsayımların gerekçeleriyle özeti raporlanmış.
@@ -474,7 +504,9 @@ v6'daki tüm senaryolara ek olarak:
 
 ## 12. ÇALIŞMA YÖNTEMİ (ÖZET)
 
-Bölüm 0.2'deki sırayı izle. v8'de özellikle dikkat edilecek yeni madde: **`Payout`/`PayoutRecipient` ayrımı** (Bölüm 2.2) — `PayoutService` her zaman `Match.Winners` listesinin tamamını gezip kazanan başına ayrı bir `PayoutRecipient` ve ayrı bir BTCPay çağrısı üretmeli; tekil-kazanan varsayımıyla kodlanmamalı (N=1 özel durum değil, genel akışın N=1 hali olarak ele alınmalı). v7'den devam eden ve hâlâ kritik olanlar: state machine'lerin `StatusRank` ile monotonluğu (Bölüm 5.4) — webhook'lar sırasız gelebilir, hiçbir geçiş state'i geriye almamalı; yuvarlamanın yalnızca persist anında, tek seferde yapılması (Bölüm 2.3); `PayoutRecipient.NetworkFeeLtc`'nin yalnızca gerçekleşen fee ile doldurulması, asla tahminle yazılmaması (Bölüm 2.6); cache stampede'e karşı single-flight ve `PriceOracleSource`'un cache'ten bağımsız kalması (Bölüm 1.2). Mainnet'e asla otomatik geçme. Sonunda Bölüm 11'deki checklist'i doğrula ve özet raporla.
+> ⚠️ **v10'da kısmen süpersede edildi:** Aşağıdaki özette geçen "kazanan başına ayrı bir BTCPay çağrısı" ve "`PayoutRecipient.NetworkFeeLtc`" vurgularının **kodda karşılığı yoktur**; üstleri çizilmiştir. Çoklu-kazanan (N≥1 genel akış) vurgusu ve diğer maddeler aynen geçerlidir.
+
+Bölüm 0.2'deki sırayı izle. v8'de özellikle dikkat edilecek madde: **`Payout`/`PayoutRecipient` ayrımı** (Bölüm 2.2) — `PayoutService` her zaman `Match.Winners` listesinin tamamını gezip kazanan başına ayrı bir `PayoutRecipient` ~~ve ayrı bir BTCPay çağrısı~~ üretmeli (v10: BTCPay çağrısı yerine kazananın `Wallet.BalanceUsd`'sine senkron kredi); tekil-kazanan varsayımıyla kodlanmamalı (N=1 özel durum değil, genel akışın N=1 hali olarak ele alınmalı). v7'den devam eden ve hâlâ kritik olanlar: state machine'lerin `StatusRank` ile monotonluğu (Bölüm 5.4) — webhook'lar sırasız gelebilir, hiçbir geçiş state'i geriye almamalı; yuvarlamanın yalnızca persist anında, tek seferde yapılması (Bölüm 2.3); ~~`PayoutRecipient.NetworkFeeLtc`'nin yalnızca gerçekleşen fee ile doldurulması, asla tahminle yazılmaması (Bölüm 2.6)~~ → **v10'da geçersiz, alan yok**; cache stampede'e karşı single-flight ve `PriceOracleSource`'un cache'ten bağımsız kalması (Bölüm 1.2). Mainnet'e asla otomatik geçme. Sonunda Bölüm 11'deki checklist'i doğrula ve özet raporla.
 
 ---
 

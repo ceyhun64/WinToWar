@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { createVipRoom, getGameConfig, type JoinRoomResult } from "@/lib/game/api";
@@ -133,13 +134,12 @@ export function VipCreateDialog({ open, onOpenChange }: { open: boolean; onOpenC
             <Label htmlFor="maxPlayers">
               Oyuncu sayısı ({config.vipRoomMinPlayers}-{config.vipRoomMaxPlayers})
             </Label>
-            <Input
+            <NumberInput
               id="maxPlayers"
-              type="number"
               min={config.vipRoomMinPlayers}
               max={config.vipRoomMaxPlayers}
               value={maxPlayers}
-              onChange={(e) => setMaxPlayers(Number(e.target.value))}
+              onValueChange={(value) => setMaxPlayers((prev) => value ?? prev)}
             />
           </div>
 
@@ -147,13 +147,14 @@ export function VipCreateDialog({ open, onOpenChange }: { open: boolean; onOpenC
             <Label htmlFor="greyDefense">
               Gri bölge savunması ({config.greyRegionDefenseMin}-{config.greyRegionDefenseMax})
             </Label>
-            <Input
+            <NumberInput
               id="greyDefense"
-              type="number"
               min={config.greyRegionDefenseMin}
               max={config.greyRegionDefenseMax}
               value={greyRegionDefenseCount}
-              onChange={(e) => setGreyRegionDefenseCount(Number(e.target.value))}
+              onValueChange={(value) =>
+                setGreyRegionDefenseCount((prev) => value ?? prev)
+              }
             />
             <p className="text-xs text-muted-foreground">Yüksek değer = daha zor fetih.</p>
           </div>
@@ -167,14 +168,12 @@ export function VipCreateDialog({ open, onOpenChange }: { open: boolean; onOpenC
             <>
               <div className="flex flex-col gap-3">
                 <Label htmlFor="entryFee">Giriş ücreti (USD)</Label>
-                <Input
+                <NumberInput
                   id="entryFee"
-                  type="number"
                   min={0}
                   step={0.01}
                   value={entryFeeUsd}
-                  onChange={(e) => setEntryFeeUsd(Number(e.target.value))}
-                  className="text-right"
+                  onValueChange={(value) => setEntryFeeUsd((prev) => value ?? prev)}
                 />
                 {shortfall !== null ? (
                   <p className="text-xs text-muted-foreground">

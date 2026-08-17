@@ -24,8 +24,9 @@ public class RefundServiceIntegrationTests : IDisposable
         (_db, _connection) = PaymentDbContextFactory.CreateOpen();
         _timeProvider = new ManualTimeProvider(DateTimeOffset.UtcNow);
         var paymentProvider = new FakePaymentProvider(NullLogger<FakePaymentProvider>.Instance);
+        var notifier = new PaymentEventNotifier(new FakeHubContext(), new FakeWalletHubContext());
         _walletService = new WalletService(
-            _db, new FixedPriceOracle(44.5m), paymentProvider, Options.Create(new PaymentConfig()), _timeProvider, NullLogger<WalletService>.Instance);
+            _db, new FixedPriceOracle(44.5m), paymentProvider, Options.Create(new PaymentConfig()), _timeProvider, notifier, NullLogger<WalletService>.Instance);
 
         _sut = new RefundService(_db, _walletService, _timeProvider, NullLogger<RefundService>.Instance);
     }

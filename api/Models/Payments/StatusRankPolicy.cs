@@ -35,7 +35,36 @@ public static class StatusRankPolicy
     /// Bir webhook'un bildirdiği <paramref name="incoming"/> state'in mevcut
     /// <paramref name="current"/> state'e uygulanıp uygulanamayacağını belirler.
     /// Yalnızca mevcut rank'ten daha yüksek bir rank'e geçiş kabul edilir.
+    ///
+    /// 🐞 docs/21-payment-sandbox-e2e.md Aşama 4 (Bölüm 6, adım 7) gerçek regtest
+    /// bulgusu: tek başına rank karşılaştırması YETERSİZDİ. Expired/Refunded/Failed
+    /// aynı rank'i (2) paylaştığı için, ödemesi FİİLEN alınmış ve bakiyeye
+    /// kredilenmiş bir `Confirmed` invoice'a geç kalmış (out-of-order) bir
+    /// `InvoiceExpired`/`InvoiceInvalid` webhook'u geldiğinde geçiş kabul ediliyor
+    /// ve invoice `Expired`/`Failed` olarak işaretleniyordu — sandbox'ta fiilen
+    /// üretildi. Bu, Bölüm 5.1'deki state machine'e aykırıdır: oradaki diyagramda
+    /// Expired/Failed dalları YALNIZCA `Pending`'den çıkar; `Confirmed`'den çıkan
+    /// tek geçiş `Refunded`'dır (RefundService.SubmitAndPersistAsync bunu kullanır).
+    /// Sonucu para kaybı değil ama gerçek parayla ödenmiş bir kaydın "başarısız"
+    /// olarak raporlanmasıydı (PaymentService.GetFailedInvoicesAsync → /admin/odemeler
+    /// ve oyuncunun /gecmis listesi). Rank monotonluğu korunur, üzerine Bölüm 5.1'in
+    /// izin verdiği geçişler kısıtı eklenir.
     /// </summary>
-    public static bool IsForwardTransition(PaymentInvoiceStatus current, PaymentInvoiceStatus incoming) =>
-        GetRank(incoming) > GetRank(current);
+    public static bool IsForwardTransition(PaymentInvoiceStatus current, PaymentInvoiceStatus incoming)
+    {
+        if (GetRank(incoming) <= GetRank(current))
+        {
+            return false;
+        }
+
+        // Bölüm 5.1: Confirmed'den yalnızca Refunded'a geçilir. (Pending ve
+        // Confirmed dışındaki tüm state'ler terminaldir ve zaten yukarıdaki rank
+        // kontrolüne takılır, bu yüzden başka bir `current` değeri kalmaz.)
+        if (current == PaymentInvoiceStatus.Confirmed && incoming != PaymentInvoiceStatus.Refunded)
+        {
+            return false;
+        }
+
+        return true;
+    }
 }

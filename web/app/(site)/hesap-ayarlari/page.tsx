@@ -121,108 +121,110 @@ function HesapAyarlariPageContent() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-4 py-8">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8">
       <PageHero icon={Settings} title="Hesap Ayarları" />
 
-      <GameCard>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3">
-            <Label htmlFor="displayName">Görünen ad</Label>
-            <Input
-              id="displayName"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
-          </div>
-          <Button onClick={handleSave}>{saved ? "Kaydedildi" : "Kaydet"}</Button>
-        </CardContent>
-      </GameCard>
-
-      <GameCard>
-        <CardHeader>
-          <CardTitle>{account?.hasPassword ? "Şifre Değiştir" : "Şifre Belirle"}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {account?.hasPassword ? (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <GameCard>
+          <CardContent className="flex flex-col gap-3">
             <div className="flex flex-col gap-3">
-              <Label htmlFor="currentPassword">Mevcut şifre</Label>
+              <Label htmlFor="displayName">Görünen ad</Label>
               <Input
-                id="currentPassword"
+                id="displayName"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+            </div>
+            <Button onClick={handleSave}>{saved ? "Kaydedildi" : "Kaydet"}</Button>
+          </CardContent>
+        </GameCard>
+
+        <GameCard>
+          <CardHeader>
+            <CardTitle>{account?.hasPassword ? "Şifre Değiştir" : "Şifre Belirle"}</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {account?.hasPassword ? (
+              <div className="flex flex-col gap-3">
+                <Label htmlFor="currentPassword">Mevcut şifre</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-3">
+              <Label htmlFor="newPassword">Yeni şifre</Label>
+              <Input
+                id="newPassword"
                 type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="En az 8 karakter"
               />
             </div>
-          ) : null}
-          <div className="flex flex-col gap-3">
-            <Label htmlFor="newPassword">Yeni şifre</Label>
-            <Input
-              id="newPassword"
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="En az 8 karakter"
-            />
-          </div>
-          {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
-          <Button disabled={passwordBusy} onClick={handleChangePassword}>
-            {passwordBusy ? "Kaydediliyor..." : passwordSaved ? "Kaydedildi" : "Kaydet"}
-          </Button>
-        </CardContent>
-      </GameCard>
-
-      <GameCard>
-        <CardHeader>
-          <CardTitle>Google Hesabı</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {account?.googleLinked ? (
-            <p className="text-sm text-muted-foreground">Google hesabınız bağlı.</p>
-          ) : (
-            <>
-              <p className="text-sm text-muted-foreground">
-                Google ile de giriş yapabilmek için hesabınızı bağlayın.
-              </p>
-              <GoogleContinueButton
-                mode="link"
-                onError={setGoogleMessage}
-                onSuccess={(player) => {
-                  setAccount(player);
-                  setGoogleMessage("Google hesabınız bağlandı.");
-                }}
-              />
-            </>
-          )}
-          {googleMessage ? <p className="text-sm text-muted-foreground">{googleMessage}</p> : null}
-        </CardContent>
-      </GameCard>
-
-      <GameCard className="border-destructive/40">
-        <CardHeader>
-          <CardTitle>Hesabımı Sil</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Bu işlem geri alınamaz. Devam etmeden önce bakiyenizi çektiğinizden emin olun (bkz.
-            /cuzdan).
-          </p>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
-          {confirmingDelete ? (
-            <div className="flex gap-3">
-              <Button variant="destructive" disabled={deleting} onClick={handleDeleteAccount}>
-                {deleting ? "Kontrol ediliyor..." : "Evet, hesabımı sil"}
-              </Button>
-              <Button variant="outline" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
-                Vazgeç
-              </Button>
-            </div>
-          ) : (
-            <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
-              Hesabımı Sil
+            {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
+            <Button disabled={passwordBusy} onClick={handleChangePassword}>
+              {passwordBusy ? "Kaydediliyor..." : passwordSaved ? "Kaydedildi" : "Kaydet"}
             </Button>
-          )}
-        </CardContent>
-      </GameCard>
+          </CardContent>
+        </GameCard>
+
+        <GameCard>
+          <CardHeader>
+            <CardTitle>Google Hesabı</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {account?.googleLinked ? (
+              <p className="text-sm text-muted-foreground">Google hesabınız bağlı.</p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Google ile de giriş yapabilmek için hesabınızı bağlayın.
+                </p>
+                <GoogleContinueButton
+                  mode="link"
+                  onError={setGoogleMessage}
+                  onSuccess={(player) => {
+                    setAccount(player);
+                    setGoogleMessage("Google hesabınız bağlandı.");
+                  }}
+                />
+              </>
+            )}
+            {googleMessage ? <p className="text-sm text-muted-foreground">{googleMessage}</p> : null}
+          </CardContent>
+        </GameCard>
+
+        <GameCard className="border-destructive/40">
+          <CardHeader>
+            <CardTitle>Hesabımı Sil</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Bu işlem geri alınamaz. Devam etmeden önce bakiyenizi çektiğinizden emin olun (bkz.
+              /cuzdan).
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+            {confirmingDelete ? (
+              <div className="flex gap-3">
+                <Button variant="destructive" disabled={deleting} onClick={handleDeleteAccount}>
+                  {deleting ? "Kontrol ediliyor..." : "Evet, hesabımı sil"}
+                </Button>
+                <Button variant="outline" disabled={deleting} onClick={() => setConfirmingDelete(false)}>
+                  Vazgeç
+                </Button>
+              </div>
+            ) : (
+              <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+                Hesabımı Sil
+              </Button>
+            )}
+          </CardContent>
+        </GameCard>
+      </div>
     </div>
   );
 }

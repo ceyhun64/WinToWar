@@ -5,14 +5,12 @@ public record ProviderInvoice(string BtcPayInvoiceId, string ReceivingAddress, s
 public record ProviderTransferResult(string BtcPayTransactionId, decimal EstimatedFeeLtc);
 
 /// <summary>
-/// BTCPay Server Greenfield REST API v2'nin soyutlaması (Bölüm 1.3). Regtest/
-/// testnet instance'ı bu görev sırasında erişilebilir olmadığından (Bölüm 0.3
-/// ön koşulu), şu an yalnızca <see cref="FakePaymentProvider"/> implementasyonu
-/// mevcuttur. Gerçek BTCPay entegrasyonu için bu interface'i implemente eden
-/// yeni bir sınıf (ör. BtcPayGreenfieldProvider) eklenip Program.cs'te DI
-/// kaydı değiştirilmesi yeterlidir — geri kalan tüm servisler (PaymentService,
-/// PayoutService, RefundService, ReconciliationService) bu soyutlamaya bağımlı
-/// olduğundan değişmeden çalışmaya devam eder.
+/// BTCPay Server Greenfield REST API v2'nin soyutlaması (Bölüm 1.3). İki
+/// implementasyonu vardır ve seçim <c>Payment:Mode</c> ile yapılır (bkz. Program.cs):
+/// ağa hiç çıkmayan <see cref="FakePaymentProvider"/> (`Fake`) ve gerçek
+/// <see cref="BtcPayGreenfieldProvider"/> (`Sandbox`/`Live`). Üstteki servisler
+/// (PaymentService, PayoutService, RefundService, WalletService) yalnızca bu
+/// soyutlamaya bağımlıdır, mod değişince değişmezler.
 /// </summary>
 public interface IPaymentProvider
 {
@@ -39,4 +37,13 @@ public interface IPaymentProvider
     /// null döner.
     /// </summary>
     Task<decimal?> GetActualNetworkFeeAsync(string btcPayTransactionId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// docs/15-payment-flow-verification.md gerçek regtest E2E bulgusu: bir
+    /// invoice için fiilen ödenen toplam tutar webhook payload'ında hiç
+    /// bulunmuyor (yalnızca event tipi + invoice id taşır) — bu yüzden Bölüm 1.2/1.7'deki
+    /// overpayment/tolerans kontrolü webhook body'sinden değil, doğrudan bu uçtan
+    /// okunur. Henüz hiçbir ödeme algılanmadıysa null döner.
+    /// </summary>
+    Task<decimal?> GetTotalPaidLtcAsync(string btcPayInvoiceId, CancellationToken cancellationToken);
 }

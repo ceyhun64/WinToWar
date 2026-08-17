@@ -1,0 +1,168 @@
+# WinToWar — self-hosted BTCPay REGTEST sandbox (docs/21-payment-sandbox-e2e.md Bölüm 4).
+#
+# Bu dosya UYGULAMA KODUNUN parçası değildir; geliştirme ortamı altyapısıdır — bu
+# yüzden api//web/ ağacının dışında, sandbox/btcpay/ altında versiyonlanır (Bölüm 4
+# "Dosya konumu" kararı). Gerçek para YOKTUR, ağ her zaman regtest'tir.
+#
+# Elle çalıştırma yerine sandbox/btcpay/up.ps1 / down.ps1 kullanılmalı — bu script'ler
+# bu dosyayı doğru sırayla (önce altyapı+BTCPay, sonra bootstrap, sonra wintowar-api)
+# çalıştırır ve gerekli .env değerlerini üretir.
+services:
+  postgres:
+    restart: unless-stopped
+    image: btcpayserver/postgres:18.4
+    shm_size: 256mb
+    command: ["-c", "random_page_cost=1.0", "-c", "shared_preload_libraries=pg_stat_statements"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - "btcpay_sandbox_postgres_datadir:/var/lib/postgresql"
+      - "./pg-init:/docker-entrypoint-initdb.d"
+
+  bitcoind:
+    restart: unless-stopped
+    image: btcpayserver/bitcoin:29.2
+    environment:
+      BITCOIN_NETWORK: regtest
+      CREATE_WALLET: "false"
+      BITCOIN_WALLETDIR: "/walletdata"
+      BITCOIN_EXTRA_ARGS: |
+        rpcport=43782
+        rpcbind=0.0.0.0:43782
+        rpcallowip=0.0.0.0/0
+        port=39388
+        whitelist=0.0.0.0/0
+        maxmempool=500
+    expose:
+      - "43782"
+      - "39388"
+    volumes:
+      - "btcpay_sandbox_bitcoin_datadir:/data"
+      - "btcpay_sandbox_bitcoin_wallet_datadir:/walletdata"
+
+  litecoind:
+    restart: unless-stopped
+    image: btcpayserver/litecoin:0.21.5.5
+    environment:
+      BITCOIN_NETWORK: regtest
+      BITCOIN_WALLETDIR: "/walletdata"
+      # Gerçek E2E bulgusu: fallbackfee olmadan regtest litecoind'de
+      # "fee-estimation-unavailable" hatası alınıyor (on-chain payout gönderimini
+      # engelliyor) — bkz. up.ps1 "fee history seed" adımı.
+      BITCOIN_EXTRA_ARGS: |
+        rpcport=43782
+        rpcbind=0.0.0.0:43782
+        rpcallowip=0.0.0.0/0
+        port=39388
+        whitelist=0.0.0.0/0
+        fallbackfee=0.0002
+        minrelaytxfee=0.00001000
+    expose:
+      - "43782"
+      - "39388"
+    volumes:
+      - "btcpay_sandbox_litecoin_datadir:/data"
+      - "btcpay_sandbox_litecoin_wallet_datadir:/walletdata"
+
+  nbxplorer:
+    restart: unless-stopped
+    image: nicolasdorier/nbxplorer:2.6.11
+    expose:
+      - "32838"
+    ports:
+      - "32838:32838"
+    environment:
+      NBXPLORER_NETWORK: regtest
+      NBXPLORER_BIND: 0.0.0.0:32838
+      NBXPLORER_TRIMEVENTS: 10000
+      NBXPLORER_SIGNALFILESDIR: /datadir
+      NBXPLORER_POSTGRES: User ID=postgres;Host=postgres;Port=5432;Application Name=nbxplorer;MaxPoolSize=20;Database=nbxplorerregtest
+      NBXPLORER_CHAINS: "btc,ltc"
+      NBXPLORER_BTCRPCURL: http://bitcoind:43782/
+      NBXPLORER_BTCNODEENDPOINT: bitcoind:39388
+      NBXPLORER_LTCRPCURL: http://litecoind:43782/
+      NBXPLORER_LTCNODEENDPOINT: litecoind:39388
+      NBXPLORER_NOAUTH: 1
+      NBXPLORER_EXPOSERPC: 1
+    volumes:
+      - "btcpay_sandbox_nbxplorer_datadir:/datadir"
+      - "btcpay_sandbox_bitcoin_datadir:/root/.bitcoin"
+      - "btcpay_sandbox_litecoin_datadir:/root/.litecoin"
+    depends_on:
+      - postgres
+      - bitcoind
+      - litecoind
+
+  btcpayserver:
+    restart: unless-stopped
+    image: btcpayserver/btcpayserver:2.4.2
+    expose:
+      - "49392"
+    ports:
+      - "49392:49392"
+    environment:
+      BTCPAY_POSTGRES: User ID=postgres;Host=postgres;Port=5432;Application Name=btcpayserver;Database=btcpayserverregtest
+      BTCPAY_NETWORK: regtest
+      BTCPAY_BIND: 0.0.0.0:49392
+      BTCPAY_ROOTPATH: /
+      BTCPAY_DOCKERDEPLOYMENT: "true"
+      BTCPAY_CHAINS: "btc,ltc"
+      BTCPAY_BTCEXPLORERURL: http://nbxplorer:32838/
+      BTCPAY_LTCEXPLORERURL: http://nbxplorer:32838/
+      BTCPAY_EXPLORERPOSTGRES: User ID=postgres;Host=postgres;Port=5432;Application Name=btcpayserver;MaxPoolSize=80;Database=nbxplorerregtest
+    volumes:
+      - "btcpay_sandbox_btcpay_datadir:/datadir"
+      - "btcpay_sandbox_nbxplorer_datadir:/root/.nbxplorer"
+    depends_on:
+      - postgres
+      - nbxplorer
+
+  # up.ps1 tarafından bootstrap TAMAMLANDIKTAN SONRA ayrıca başlatılır
+  # (`docker compose up -d wintowar-api`) — BTCPAY_API_KEY/STORE_ID/WEBHOOK_SECRET
+  # bootstrap'tan önce bilinmediği için. .env dosyası (gitignored, commit edilmez)
+  # bu değerleri sağlar.
+  #
+  # 🔒 docs/21 Bölüm 5: burada YALNIZCA config veriliyor — Payment__Mode=Sandbox,
+  # BtcPay bağlantı bilgileri. Live'a geçiş de tam olarak aynı alanların farklı
+  # değerlerle verilmesidir (kod farkı yok).
+  wintowar-api:
+    build:
+      context: ../../api
+      dockerfile: ../sandbox/btcpay/api.Dockerfile
+    restart: "no"
+    ports:
+      - "5299:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Payment__Mode: Sandbox
+      Payment__BtcPayBaseUrl: http://btcpayserver:49392
+      Payment__BtcPayApiKey: ${BTCPAY_API_KEY}
+      Payment__BtcPayStoreId: ${BTCPAY_STORE_ID}
+      Payment__WebhookSecret: ${WEBHOOK_SECRET}
+      # Invoice gecerlilik suresi (saniye). Varsayilan uretim degeri 900'dur; expired
+      # invoice senaryosunu (docs/21 Bolum 6 adim 8) gercek bir BTCPay InvoiceExpired
+      # event'iyle dogrulayabilmek icin .env'den gecici olarak kisaltilabilir.
+      # Bu bir CONFIG anahtaridir, kod dallanmasi degildir.
+      Payment__PriceQuoteValiditySeconds: ${PRICE_QUOTE_VALIDITY_SECONDS:-900}
+      # Kayit hiz siniri (IP basina/saat). Uretim varsayilani 5'tir; cok oyunculu
+      # bir E2E senaryosunda (4 test hesabi tek IP'den) bu sinir testin kendisini
+      # bloklar. Yalnizca sandbox icin .env'den yukseltilebilir — uygulama kodu
+      # ve uretim varsayilani degismez.
+      Auth__RegisterRateLimitPerHour: ${AUTH_REGISTER_LIMIT:-5}
+      # Uygulamanın kendi veritabanı da sandbox'ın Postgres'inde durur — host'ta
+      # ayrı bir Postgres kurulu olmasını gerektirmemek için (Bölüm 4
+      # "tek komutla sıfırdan çalışır hale gelmeli").
+      Payment__ConnectionString: Host=postgres;Port=5432;Database=wintowar;Username=postgres;Password=postgres
+      Auth__ConnectionString: Host=postgres;Port=5432;Database=wintowar;Username=postgres;Password=postgres
+    depends_on:
+      - btcpayserver
+      - postgres
+
+volumes:
+  btcpay_sandbox_postgres_datadir:
+  btcpay_sandbox_bitcoin_datadir:
+  btcpay_sandbox_bitcoin_wallet_datadir:
+  btcpay_sandbox_litecoin_datadir:
+  btcpay_sandbox_litecoin_wallet_datadir:
+  btcpay_sandbox_nbxplorer_datadir:
+  btcpay_sandbox_btcpay_datadir:

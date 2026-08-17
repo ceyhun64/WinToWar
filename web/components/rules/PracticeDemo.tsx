@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 
 interface DemoRegion {
@@ -107,13 +107,12 @@ export function PracticeDemo() {
           <NativeSelectOption value="b">Bölge B&apos;ye saldır</NativeSelectOption>
           <NativeSelectOption value="c">Bölge C&apos;ye saldır</NativeSelectOption>
         </NativeSelect>
-        <Input
-          type="number"
+        <NumberInput
           min={1}
           max={home.soldierCount}
           value={soldierCount}
-          onChange={(e) => setSoldierCount(Number(e.target.value))}
-          className="w-20"
+          onValueChange={(value) => setSoldierCount((prev) => value ?? prev)}
+          className="w-24"
           disabled={moving}
         />
         <Button size="sm" disabled={moving || home.soldierCount === 0} onClick={sendAttack}>

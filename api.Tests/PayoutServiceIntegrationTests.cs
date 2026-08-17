@@ -35,12 +35,13 @@ public class PayoutServiceIntegrationTests : IDisposable
         var mapProvider = new MapProvider(new FakeHostEnvironment(), NullLogger<MapProvider>.Instance);
         _matchManager = new MatchManager(mapProvider, TestEventLog.Writer(), NullLogger<MatchManager>.Instance);
         var paymentProvider = new FakePaymentProvider(NullLogger<FakePaymentProvider>.Instance);
+        var notifier = new PaymentEventNotifier(_hubContext, new FakeWalletHubContext());
         _walletService = new WalletService(
-            _db, new FixedPriceOracle(40.0m), paymentProvider, Options.Create(_config), _timeProvider, NullLogger<WalletService>.Instance);
+            _db, new FixedPriceOracle(40.0m), paymentProvider, Options.Create(_config), _timeProvider, notifier, NullLogger<WalletService>.Instance);
 
         _sut = new PayoutService(
             _db, _walletService, _matchManager, Options.Create(_config), _timeProvider,
-            new PaymentEventNotifier(_hubContext), NullLogger<PayoutService>.Instance);
+            notifier, NullLogger<PayoutService>.Instance);
     }
 
     [Fact]

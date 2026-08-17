@@ -70,7 +70,7 @@ Not available. The repository contains no dedicated screenshots/documentation-im
 **Infrastructure**
 
 - PostgreSQL — single database, one shared connection string across the three `DbContext`s below.
-- [BTCPay Server](https://btcpayserver.org/) (Greenfield REST API) for LTC invoices and payouts. A `FakePaymentProvider` is registered automatically in `Development` (see `Program.cs`); outside `Development`, the real `BtcPayGreenfieldProvider` is used and requires a reachable BTCPay instance.
+- [BTCPay Server](https://btcpayserver.org/) (Greenfield REST API) for LTC invoices and payouts. Which provider is used depends on `Payment:Mode` (see `Program.cs`): `Fake` (default) registers `FakePaymentProvider` and never touches the network; `Sandbox` and `Live` both register the real `BtcPayGreenfieldProvider` and require a reachable BTCPay instance. A self-hosted regtest sandbox is versioned in [`sandbox/btcpay/`](sandbox/btcpay/README.md) and starts with a single command.
 - No containerization, CI, or deployment configuration (Dockerfile, `docker-compose`, GitHub Actions, `vercel.json`, etc.) is present in the repository — see [Deployment](#deployment).
 
 Client-side state is a lightweight custom React hook (`web/lib/game/store.ts`'s `useGameStore`), explicitly *not* Redux or Zustand (per the file's own header comment) — there is no external state-management library in `package.json`.
@@ -128,7 +128,7 @@ Client-side state is a lightweight custom React hook (`web/lib/game/store.ts`'s 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) (project targets `net10.0`)
 - [Node.js](https://nodejs.org/) compatible with Next.js 16 / React 19
 - [PostgreSQL](https://www.postgresql.org/) instance
-- (Optional, for real payments) a reachable [BTCPay Server](https://btcpayserver.org/) instance — not required in `Development`, where `FakePaymentProvider` is used automatically
+- (Optional, for real payments) a reachable [BTCPay Server](https://btcpayserver.org/) instance — not required with the default `Payment:Mode=Fake`. For a real-protocol, no-real-money setup, run the self-hosted regtest sandbox in [`sandbox/btcpay/`](sandbox/btcpay/README.md) (needs Docker); it also brings up its own PostgreSQL.
 
 **Clone and install dependencies**
 
@@ -168,6 +168,7 @@ There is no `.env.example` in the repository. The values below are the configura
 | `Payment` | `PaymentToleranceRate` / `RefundOverpaymentThresholdUsd` | Payment matching tolerance and overpayment refund threshold. |
 | `Payment` | `RequiredConfirmations` | On-chain confirmations required (default 1, tuned for regtest/testnet). |
 | `Payment` | `NetworkFeeResponsibility` | Documentation/audit label only (`"DeductedFromPool"`); network fee is deducted from the payout pool. |
+| `Payment` | `Mode` | Payment provider mode: `Fake` (default, no network), `Sandbox` (real Greenfield against regtest BTCPay), `Live` (real Greenfield against a mainnet store). `Sandbox` and `Live` differ **only** in configuration values — there is no code branch between them. In `Sandbox`/`Live`, missing `BtcPay*` configuration makes startup fail fast (never a silent fallback to `Fake`). |
 | `Payment` | `BtcPayBaseUrl` / `BtcPayApiKey` / `BtcPayStoreId` | BTCPay Server Greenfield API connection details. |
 | `Payment` | `WebhookSecret` / `WebhookSignatureHeader` / `WebhookMaxAgeSeconds` | BTCPay webhook signature verification. |
 | `Payment` | `WebhookEventRetentionDays` | Retention period for processed webhook events (default 90). |
@@ -221,7 +222,7 @@ dotnet build      # compile
 dotnet publish     # produce a deployable output
 ```
 
-Outside `Development`, `Program.cs` registers the real `BtcPayGreenfieldProvider` instead of the fake payment provider, so a reachable BTCPay Server instance and valid `Payment:BtcPay*` configuration are required. Per an in-code comment (`Program.cs`), this provider has not been verified against a live BTCPay instance and should be end-to-end tested against regtest/testnet before going live.
+With `Payment:Mode` set to `Sandbox` or `Live`, `Program.cs` registers the real `BtcPayGreenfieldProvider` instead of the fake payment provider, so a reachable BTCPay Server instance and valid `Payment:BtcPay*` configuration are required; if any of them is missing the application refuses to start rather than falling back to the fake provider. This provider **has** been verified end-to-end against a live BTCPay Server (2.4.2) on a Litecoin regtest network — real invoice creation, real on-chain payment, webhook signature verification, idempotency/out-of-order handling, invoice expiry, and real on-chain withdrawal — using the sandbox in [`sandbox/btcpay/`](sandbox/btcpay/README.md). Going from `Sandbox` to `Live` is a configuration change only; `RequiredConfirmations` should be raised from its regtest-appropriate value of `1` before handling mainnet funds.
 
 **Frontend:**
 
@@ -303,7 +304,7 @@ Issues that can actually occur based on the current code:
 - **Backend crashes immediately on startup with an "Oda kapasiteleri ... haritadaki bölge sayısını ... aşıyor" (`InvalidOperationException`)**: a room-capacity constant in `GameConfig.cs` (`VipRoomMaxPlayers`, `StandardRoomPlayerCount`, or `PracticeRoomDefaultPlayerCount`) exceeds the region count in `api/Data/map.json` (currently 12). This is an intentional fail-fast check in `Program.cs`, not a bug — fix the map or the constant.
 - **Frontend can't reach the backend / CORS errors in the browser console**: the backend's CORS policy only allows `http://localhost:3000` by default (`Program.cs`). Running the frontend on a different port or host will be rejected.
 - **SignalR connects but immediately gets `401 Unauthorized` on `/hub/game`**: the hub requires a JWT passed via `?access_token=...` on the connection URL, not an `Authorization` header — see `web/lib/game/signalr-client.ts` for the expected client pattern.
-- **Real (non-Development) build fails to process payments / BTCPay calls fail**: outside `Development`, the app requires a real, reachable BTCPay Server instance and valid `Payment:BtcPayBaseUrl` / `BtcPayApiKey` / `BtcPayStoreId`. In `Development`, `FakePaymentProvider` is used automatically instead — no BTCPay instance is needed for local development.
+- **Payments fail or the app refuses to start with a "zorunlu BTCPay ayarları eksik" error**: `Payment:Mode` is `Sandbox`/`Live`, which requires a real, reachable BTCPay Server instance and valid `Payment:BtcPayBaseUrl` / `BtcPayApiKey` / `BtcPayStoreId` / `WebhookSecret`. Either supply them (see [`sandbox/btcpay/`](sandbox/btcpay/README.md)) or leave `Payment:Mode` at its default `Fake`, which needs no BTCPay instance.
 - **Exchange-rate lookups fail with 403 from CoinGecko**: CoinGecko blocks requests without a `User-Agent` header; `Program.cs` already sets one (`WinToWar/1.0`) for the named `HttpClient`. If you introduce a new HTTP client for pricing, keep this header.
 - **EF Core migrations don't apply / database schema is out of date**: migrations run automatically via `Database.Migrate()` on every backend startup for all three `DbContext`s — ensure the configured `ConnectionString` points at a reachable PostgreSQL instance before running `dotnet run`.
 - **`docs/*.md` files referenced in code comments are missing**: `docs/` is intentionally gitignored (see the note under [Overview](#overview)) — this is expected on a fresh clone, not a broken checkout.

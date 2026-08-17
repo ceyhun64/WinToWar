@@ -132,6 +132,14 @@ public class PayoutService
 
         _logger.LogInformation("Payout tamamlandı: {MatchId}, kazanan sayısı={WinnerCount}", matchId, winnerCount);
 
+        // docs/16-wallet-balance-sync.md Bölüm 1 "Önemli": transaction commit
+        // olduktan SONRA, her kazanan için ayrı bildirim (her birinin bakiyesi
+        // farklı, tek bir grup mesajı olmaz).
+        foreach (var recipient in recipients)
+        {
+            await _walletService.NotifyBalanceChangedAsync(recipient.WinnerPlayerId, cancellationToken);
+        }
+
         await _notifier.NotifyPayoutCompletedAsync(matchId, new PayoutCompletedEvent
         {
             MatchId = matchId,

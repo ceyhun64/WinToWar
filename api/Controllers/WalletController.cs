@@ -49,6 +49,13 @@ public class WalletController : ControllerBase
         return Ok(await _walletService.ListForPlayerAsync(CurrentPlayerId, cancellationToken));
     }
 
+    /// <summary>docs/17-withdrawal-address-suggestions.md Bölüm 2: "Son kullanılan adresler" önerisi.</summary>
+    [HttpGet("withdrawal-addresses")]
+    public async Task<ActionResult<List<WithdrawalAddressSuggestionDto>>> GetWithdrawalAddressSuggestions(CancellationToken cancellationToken)
+    {
+        return Ok(await _walletService.GetWithdrawalAddressSuggestionsAsync(CurrentPlayerId, cancellationToken));
+    }
+
     [HttpPost("topup")]
     public async Task<ActionResult<PaymentInvoiceDto>> TopUp([FromBody] CreateTopUpInvoiceRequest request, CancellationToken cancellationToken)
     {

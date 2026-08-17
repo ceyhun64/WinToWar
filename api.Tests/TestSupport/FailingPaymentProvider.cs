@@ -16,4 +16,7 @@ public class FailingPaymentProvider : IPaymentProvider
 
     public Task<decimal?> GetActualNetworkFeeAsync(string btcPayTransactionId, CancellationToken cancellationToken) =>
         Task.FromResult<decimal?>(null);
+
+    public Task<decimal?> GetTotalPaidLtcAsync(string btcPayInvoiceId, CancellationToken cancellationToken) =>
+        Task.FromResult<decimal?>(null);
 }

@@ -70,10 +70,13 @@ public class RoomEntryService
             return new RoomEntryResult(RoomEntryOutcome.InsufficientBalance, entryFee, null, null);
         }
 
+        await _walletService.NotifyBalanceChangedAsync(playerId, cancellationToken);
+
         var player = ReserveAndConfirmSafely(match, playerId, playerName, now, joinIpAddress);
         if (player is null)
         {
             await _walletService.CreditAsync(playerId, entryFee, cancellationToken);
+            await _walletService.NotifyBalanceChangedAsync(playerId, cancellationToken);
             _logger.LogInformation("Oda dolu/başlamış, düşülen giriş ücreti bakiyeye geri eklendi: {PlayerId}, {MatchId}", playerId, matchId);
             return new RoomEntryResult(RoomEntryOutcome.RoomFull, 0m, null, null);
         }

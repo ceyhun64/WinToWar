@@ -20,13 +20,6 @@ public class BtcPayWebhookPayload
 
     [JsonPropertyName("invoiceId")]
     public required string InvoiceId { get; init; }
-
-    [JsonPropertyName("confirmations")]
-    public int Confirmations { get; init; }
-
-    /// <summary>Ödenen tutar (LTC), invariant culture string olarak — Bölüm 0.3.</summary>
-    [JsonPropertyName("paidAmountLtc")]
-    public string? PaidAmountLtc { get; init; }
 }
 
 /// <summary>BTCPay'in webhook event type alanının bu modülün ilgilendiği değerleri.</summary>

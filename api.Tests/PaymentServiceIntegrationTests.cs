@@ -22,7 +22,7 @@ public class PaymentServiceIntegrationTests : IDisposable
     private readonly Microsoft.Data.Sqlite.SqliteConnection _connection;
     private readonly PaymentConfig _config;
     private readonly ManualTimeProvider _timeProvider;
-    private readonly FakePaymentProvider _paymentProvider;
+    private readonly ConfigurableTotalPaidPaymentProvider _paymentProvider;
     private readonly FakeHubContext _hubContext;
     private readonly PaymentService _sut;
     private readonly string _matchId;
@@ -32,14 +32,14 @@ public class PaymentServiceIntegrationTests : IDisposable
         (_db, _connection) = PaymentDbContextFactory.CreateOpen();
         _config = new PaymentConfig { WebhookSecret = "test-secret", RequiredConfirmations = 1 };
         _timeProvider = new ManualTimeProvider(DateTimeOffset.UtcNow);
-        _paymentProvider = new FakePaymentProvider(NullLogger<FakePaymentProvider>.Instance);
+        _paymentProvider = new ConfigurableTotalPaidPaymentProvider();
         _hubContext = new FakeHubContext();
 
-        var notifier = new PaymentEventNotifier(_hubContext);
+        var notifier = new PaymentEventNotifier(_hubContext, new FakeWalletHubContext());
         var mapProvider = new MapProvider(new FakeHostEnvironment(), NullLogger<MapProvider>.Instance);
         var matchManager = new MatchManager(mapProvider, TestEventLog.Writer(), NullLogger<MatchManager>.Instance);
         var priceOracle = new FixedPriceOracle(44.5m);
-        var walletService = new WalletService(_db, priceOracle, _paymentProvider, Options.Create(_config), _timeProvider, NullLogger<WalletService>.Instance);
+        var walletService = new WalletService(_db, priceOracle, _paymentProvider, Options.Create(_config), _timeProvider, notifier, NullLogger<WalletService>.Instance);
         var refundService = new RefundService(_db, walletService, _timeProvider, NullLogger<RefundService>.Instance);
         var roomEntryService = new RoomEntryService(matchManager, walletService, NullLogger<RoomEntryService>.Instance);
 
@@ -126,7 +126,7 @@ public class PaymentServiceIntegrationTests : IDisposable
         await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
 
-        var payload = BuildSettledPayload("evt-1", stored.BtcPayInvoiceId, stored.AmountLtc);
+        var payload = BuildSettledPayload("evt-1", stored.BtcPayInvoiceId);
         var signature = WebhookSignatureValidator.ComputeSignatureHeader(payload, _config.WebhookSecret);
 
         await _sut.HandleWebhookAsync(payload, signature, CancellationToken.None);
@@ -139,12 +139,81 @@ public class PaymentServiceIntegrationTests : IDisposable
         Assert.Equal("PaymentConfirmed", _hubContext.Proxy.Sent[0].Method);
     }
 
+    /// <summary>
+    /// Regresyon guard'ı: docs/14-payment-sandbox.md'deki gerçek regtest E2E
+    /// bulgusu — gerçek BTCPay "InvoiceSettled" webhook'unda üst seviyede
+    /// "confirmations" alanı hiç bulunmuyor. Bu test, payload'da bu alan
+    /// TAMAMEN YOKKEN (paylaşılan BuildSettledPayload fixture'ından bağımsız,
+    /// kasıtlı olarak elle yazılmış minimal gerçek şekil) invoice'ın yine de
+    /// Confirmed'e geçtiğini kanıtlar — signature + idempotency + forward-
+    /// transition kontrolleri tek başına yeterli olmalı.
+    /// </summary>
+    [Fact]
+    public async Task Webhook_RealBtcPayShapeWithoutConfirmationsField_StillConfirmsInvoice()
+    {
+        await CreateInvoice();
+        var stored = await _db.PaymentInvoices.SingleAsync();
+
+        var payload = $$"""
+            {
+              "manuallyMarked": false,
+              "overPaid": false,
+              "deliveryId": "evt-real-shape",
+              "type": "InvoiceSettled",
+              "timestamp": {{_timeProvider.GetUtcNow().ToUnixTimeSeconds()}},
+              "invoiceId": "{{stored.BtcPayInvoiceId}}"
+            }
+            """;
+        var signature = WebhookSignatureValidator.ComputeSignatureHeader(payload, _config.WebhookSecret);
+
+        await _sut.HandleWebhookAsync(payload, signature, CancellationToken.None);
+
+        var updated = await _db.PaymentInvoices.SingleAsync();
+        Assert.Equal(PaymentInvoiceStatus.Confirmed, updated.Status);
+        Assert.NotNull(updated.ConfirmedAt);
+    }
+
+    /// <summary>
+    /// docs/15-payment-flow-verification.md gerçek regtest E2E bulgusu: gerçek bir
+    /// invoice'ı fazla ödeyip mine edildiğinde, webhook payload'ında ödenen tutar
+    /// bilgisi hiç gelmediği için eski kod overpayment'ı asla algılamıyordu (fazlalık
+    /// sessizce store'a gidiyordu, oyuncuya hiç iade edilmiyordu). Düzeltme sonrası
+    /// tutar artık IPaymentProvider.GetTotalPaidLtcAsync'ten okunuyor — bu test bunu
+    /// bir birim testiyle sabitler (ConfigurableTotalPaidPaymentProvider ile).
+    /// </summary>
+    [Fact]
+    public async Task Webhook_RealPaidAmountFromProviderExceedsToleranceAndThreshold_RefundsOverpaymentToWallet()
+    {
+        var dto = await _sut.CreateTopUpInvoiceAsync("player-1", 10.00m, CancellationToken.None);
+        var stored = await _db.PaymentInvoices.SingleAsync();
+
+        // Oyuncu invoice tutarının iki katını gönderdi (gerçek dünyada litecoind ile
+        // yapılan aşırı ödeme senaryosunun aynısı) — provider bunu simüle eder.
+        _paymentProvider.TotalPaidLtc = stored.AmountLtc * 2;
+
+        var payload = BuildSettledPayload("evt-overpay", stored.BtcPayInvoiceId);
+        var signature = WebhookSignatureValidator.ComputeSignatureHeader(payload, _config.WebhookSecret);
+        await _sut.HandleWebhookAsync(payload, signature, CancellationToken.None);
+
+        var refund = await _db.Refunds.SingleAsync();
+        Assert.Equal(RefundReason.Overpayment, refund.Reason);
+        Assert.True(refund.AmountUsd > 9.00m && refund.AmountUsd < 10.00m, $"Beklenmeyen refund tutarı: {refund.AmountUsd}");
+
+        // AsNoTracking: CreditAsync/RefundService.SubmitAsync ExecuteUpdateAsync ile doğrudan
+        // SQL UPDATE çalıştırır (change tracker'ı bypass eder) — aynı DbContext'te izlenen
+        // (tracked) bir Wallet varsa (EnsureWalletRowExistsAsync'in Add'i) EF identity map'i
+        // sorguda güncel DB değeri yerine bayat izlenen değeri döndürür, bu yüzden burada
+        // taze veri için AsNoTracking zorunludur.
+        var wallet = await _db.Wallets.AsNoTracking().SingleAsync(w => w.PlayerId == "player-1");
+        Assert.Equal(decimal.Parse(dto.AmountUsd, System.Globalization.CultureInfo.InvariantCulture) + refund.AmountUsd, wallet.BalanceUsd);
+    }
+
     [Fact]
     public async Task Webhook_InvalidSignature_ThrowsAndDoesNotChangeState()
     {
         await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
-        var payload = BuildSettledPayload("evt-1", stored.BtcPayInvoiceId, stored.AmountLtc);
+        var payload = BuildSettledPayload("evt-1", stored.BtcPayInvoiceId);
 
         await Assert.ThrowsAsync<PaymentValidationException>(() =>
             _sut.HandleWebhookAsync(payload, "sha256=deadbeef", CancellationToken.None));
@@ -158,7 +227,7 @@ public class PaymentServiceIntegrationTests : IDisposable
     {
         await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
-        var payload = BuildSettledPayload("evt-duplicate", stored.BtcPayInvoiceId, stored.AmountLtc);
+        var payload = BuildSettledPayload("evt-duplicate", stored.BtcPayInvoiceId);
         var signature = WebhookSignatureValidator.ComputeSignatureHeader(payload, _config.WebhookSecret);
 
         await _sut.HandleWebhookAsync(payload, signature, CancellationToken.None);
@@ -174,26 +243,42 @@ public class PaymentServiceIntegrationTests : IDisposable
         await CreateInvoice();
         var stored = await _db.PaymentInvoices.SingleAsync();
 
-        var settlePayload = BuildSettledPayload("evt-settle", stored.BtcPayInvoiceId, stored.AmountLtc);
+        var settlePayload = BuildSettledPayload("evt-settle", stored.BtcPayInvoiceId);
         await _sut.HandleWebhookAsync(settlePayload, WebhookSignatureValidator.ComputeSignatureHeader(settlePayload, _config.WebhookSecret), CancellationToken.None);
 
         // Gecikmeli, farklı bir event id'siyle gelen ikinci bir "Settled" event'i — aynı rank, forward değil.
-        var lateDuplicate = BuildSettledPayload("evt-late-duplicate", stored.BtcPayInvoiceId, stored.AmountLtc);
+        var lateDuplicate = BuildSettledPayload("evt-late-duplicate", stored.BtcPayInvoiceId);
         await _sut.HandleWebhookAsync(lateDuplicate, WebhookSignatureValidator.ComputeSignatureHeader(lateDuplicate, _config.WebhookSecret), CancellationToken.None);
 
         Assert.Equal(PaymentInvoiceStatus.Confirmed, (await _db.PaymentInvoices.SingleAsync()).Status);
         Assert.Single(_hubContext.Proxy.Sent); // ikinci event confirm bildirimini TEKRAR tetiklememeli.
     }
 
-    private string BuildSettledPayload(string deliveryId, string btcPayInvoiceId, decimal amountLtc) =>
+    /// <summary>
+    /// docs/14-payment-sandbox.md gerçek regtest E2E bulgusu: gerçek BTCPay
+    /// Greenfield "InvoiceSettled" webhook'u bu şekli taşır — üst seviyede ne
+    /// "confirmations" ne de "paidAmountLtc" alanı vardır (yalnızca event
+    /// zarfı + metadata). Önceki sürüm bu iki alanı (gerçekte hiç var olmayan
+    /// bir şekilde) kendisi üretiyordu; bu, kodun asla gerçek bir BTCPay'e
+    /// karşı çalıştırılmadan yazıldığını gizliyordu.
+    /// </summary>
+    private string BuildSettledPayload(string deliveryId, string btcPayInvoiceId) =>
         $$"""
         {
+          "manuallyMarked": false,
+          "overPaid": false,
           "deliveryId": "{{deliveryId}}",
+          "webhookId": "wh_test",
+          "originalDeliveryId": "{{deliveryId}}",
+          "isRedelivery": false,
           "type": "InvoiceSettled",
           "timestamp": {{_timeProvider.GetUtcNow().ToUnixTimeSeconds()}},
+          "storeId": "store_test",
           "invoiceId": "{{btcPayInvoiceId}}",
-          "confirmations": 1,
-          "paidAmountLtc": "{{amountLtc.ToString("0.00000000", System.Globalization.CultureInfo.InvariantCulture)}}"
+          "metadata": {
+            "matchId": null,
+            "playerId": "player-1"
+          }
         }
         """;
 

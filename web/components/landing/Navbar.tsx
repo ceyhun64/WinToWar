@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Swords, Gamepad2, BookOpen, HelpCircle } from "lucide-react";
 import { ensureSessionLoaded, isSignedIn, getStoredDisplayName, subscribeToSession } from "@/lib/identity";
-import { getWalletBalance } from "@/lib/payments/api";
+import { useWallet } from "@/lib/payments/WalletProvider";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,19 +25,11 @@ import { cn } from "@/lib/utils";
  */
 export function Navbar() {
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const [balanceUsd, setBalanceUsd] = useState<string | null>(null);
+  const { balanceUsd } = useWallet();
 
   useEffect(() => {
     function syncSession() {
-      if (!isSignedIn()) {
-        setDisplayName(null);
-        setBalanceUsd(null);
-        return;
-      }
-      setDisplayName(getStoredDisplayName());
-      getWalletBalance()
-        .then((dto) => setBalanceUsd(dto.balanceUsd))
-        .catch(() => setBalanceUsd(null));
+      setDisplayName(isSignedIn() ? getStoredDisplayName() : null);
     }
 
     ensureSessionLoaded().then(syncSession);

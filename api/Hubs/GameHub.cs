@@ -105,6 +105,7 @@ public class GameHub : Hub
             try
             {
                 await _walletService.CreditAsync(playerId, entryFeeUsd, Context.ConnectionAborted);
+                await _walletService.NotifyBalanceChangedAsync(playerId, Context.ConnectionAborted);
             }
             catch (Exception ex)
             {

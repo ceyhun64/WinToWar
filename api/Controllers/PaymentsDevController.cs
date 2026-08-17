@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using api;
 using api.Services.Payments;
@@ -8,9 +7,8 @@ using Microsoft.Extensions.Options;
 namespace api.Controllers;
 
 /// <summary>
-/// 🛠️ Bölüm 0.3 ön koşulu: BTCPay regtest/testnet erişilemediği için
-/// FakePaymentProvider kullanılıyor. Gerçek bir BTCPay olmadan invoice'ın
-/// "ödendi" webhook'unu tetikleyecek hiçbir dış sistem yok — bu uç, gerçek
+/// 🛠️ `Payment:Mode=Fake` (varsayılan, ağsız) modda gerçek bir BTCPay olmadığından
+/// invoice'ın "ödendi" webhook'unu tetikleyecek hiçbir dış sistem yoktur — bu uç, gerçek
 /// webhook işleme pipeline'ını (imza doğrulama, idempotency, monotonluk) uçtan
 /// uca test edebilmek için BTCPay'in üreteceği webhook payload'ını simüle edip
 /// AYNI PaymentService.HandleWebhookAsync yoluna gönderir. Yalnızca Development
@@ -65,9 +63,7 @@ public class PaymentsDevController : ControllerBase
             deliveryId = $"dev-{Guid.NewGuid():N}",
             type = BtcPayWebhookEventTypes.InvoiceSettled,
             timestamp = _timeProvider.GetUtcNow().ToUnixTimeSeconds(),
-            invoiceId = details.Value.BtcPayInvoiceId,
-            confirmations = _config.RequiredConfirmations,
-            paidAmountLtc = details.Value.AmountLtc.ToString("0.00000000", CultureInfo.InvariantCulture)
+            invoiceId = details.Value.BtcPayInvoiceId
         });
 
         var signatureHeader = WebhookSignatureValidator.ComputeSignatureHeader(payload, _config.WebhookSecret);

@@ -20,6 +20,7 @@ public class WalletService
     private readonly IPaymentProvider _paymentProvider;
     private readonly PaymentConfig _config;
     private readonly TimeProvider _timeProvider;
+    private readonly PaymentEventNotifier _notifier;
     private readonly ILogger<WalletService> _logger;
 
     public WalletService(
@@ -28,6 +29,7 @@ public class WalletService
         IPaymentProvider paymentProvider,
         IOptions<PaymentConfig> config,
         TimeProvider timeProvider,
+        PaymentEventNotifier notifier,
         ILogger<WalletService> logger)
     {
         _db = db;
@@ -35,7 +37,25 @@ public class WalletService
         _paymentProvider = paymentProvider;
         _config = config.Value;
         _timeProvider = timeProvider;
+        _notifier = notifier;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// docs/16-wallet-balance-sync.md Bölüm 1: bakiye değiştiren her akış (top-up,
+    /// refund, oda giriş ücreti/iadesi, maç ödülü, çekim talebi/reddi) bu metodu
+    /// KENDİ commit noktasından SONRA çağırır. CreditAsync/TryDebitAsync'in içine
+    /// gömülmedi çünkü bu ikisi bazı çağıranlarda (PaymentService, PayoutService,
+    /// RefundService.SubmitAndPersistAsync) ambient bir transaction içinde
+    /// çalışıyor — içeriden bildirim göndermek "commit'ten SONRA yayınla" kuralını
+    /// ihlal ederdi (rollback olabilecek bir değeri erken yayınlamış olurduk).
+    /// DTO oluşturma + yayın burada tek yerde toplanır, tetikleme her çağıranın
+    /// kendi commit noktasında kalır.
+    /// </summary>
+    public async Task NotifyBalanceChangedAsync(string playerId, CancellationToken cancellationToken)
+    {
+        var balance = await GetBalanceDtoAsync(playerId, cancellationToken);
+        await _notifier.NotifyWalletBalanceChangedAsync(playerId, balance, cancellationToken);
     }
 
     public async Task<decimal> GetBalanceAsync(string playerId, CancellationToken cancellationToken)
@@ -130,6 +150,8 @@ public class WalletService
             throw new PaymentValidationException("INSUFFICIENT_BALANCE", "Yetersiz bakiye.");
         }
 
+        await NotifyBalanceChangedAsync(playerId, cancellationToken);
+
         var quote = await _priceOracle.GetRateAsync(cancellationToken);
         var amountLtc = PaymentMath.RoundForPersistence(PaymentMath.CalculateAmountLtc(amountUsd, quote.UsdPerLtc));
 
@@ -187,6 +209,38 @@ public class WalletService
     }
 
     /// <summary>
+    /// docs/17-withdrawal-address-suggestions.md Bölüm 2: "Son kullanılan adresler"
+    /// önerisi. 🛠️ Durum filtresi: yalnızca <see cref="WithdrawalRequestStatus.Completed"/>
+    /// "fiilen zincire gönderildi" sayılır. <see cref="WithdrawalRequestStatus.Sent"/>
+    /// bu görev için YETERSİZ — ApproveWithdrawalAsync'e bakıldığında Sent, gerçek
+    /// `SendPayoutAsync` çağrısından ÖNCE (Bölüm "gönderim başlatıldığını yansıtır"
+    /// yorumuyla) commit edilir; yani bir talep Sent'te kalıp hiç Completed'a
+    /// geçmeden süreç çökebilir (nadir ama mümkün) — bu durumda adres aslında
+    /// zincire gitmemiş/gitmediği belirsiz olabilir. Completed ise SendPayoutAsync
+    /// başarıyla döndükten SONRA yazılır, yani "gerçekten gönderildi" garantisini
+    /// veren tek terminal durum budur.
+    /// </summary>
+    public async Task<List<WithdrawalAddressSuggestionDto>> GetWithdrawalAddressSuggestionsAsync(
+        string playerId, CancellationToken cancellationToken)
+    {
+        var sent = await _db.WithdrawalRequests.AsNoTracking()
+            .Where(w => w.PlayerId == playerId && w.Status == WithdrawalRequestStatus.Completed)
+            .ToListAsync(cancellationToken);
+
+        return sent
+            .GroupBy(w => w.DestinationLtcAddress)
+            .Select(g => new { Address = g.Key, LastUsedAt = g.Max(w => w.CreatedAt) })
+            .OrderByDescending(g => g.LastUsedAt)
+            .Take(5)
+            .Select(g => new WithdrawalAddressSuggestionDto
+            {
+                Address = g.Address,
+                LastUsedAt = g.LastUsedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)
+            })
+            .ToList();
+    }
+
+    /// <summary>
     /// docs/07-pages.md `/admin/odemeler` manuel onay. Bölüm 1.9'daki state machine'in
     /// (Pending→Approved→Sent→Completed / Rejected/Failed) dört ara/terminal durumu da
     /// bu tek çağrı içinde sırayla geçilir — Payout/Refund'daki gibi ayrı bir retry+
@@ -194,21 +248,36 @@ public class WalletService
     /// ama bu, state'lerin kendisinin atlanmasını gerektirmez: onay anında Approved'a
     /// geçilir, BTCPay çağrısı yapılmadan hemen önce Sent'e geçilir (gönderim
     /// başlatıldığını yansıtır), sonucuna göre Completed/Failed ile sonlanır.
+    ///
+    /// 🔒 docs/15-payment-flow-verification.md eşzamanlılık bulgusu: önceki sürüm
+    /// oku→kontrol et→yaz (check-then-act) yapıyordu — aynı ID'ye eşzamanlı iki admin
+    /// onay isteği (çift tıklama/iki sekme) ikisi de "Status==Pending" kontrolünü
+    /// UPDATE'ten önce geçebilir, bu da BTCPay'e ÇİFT on-chain gönderim (gerçek para
+    /// kaybı) anlamına gelirdi (bkz. 06-coding-standards.md "Thread Safety/Concurrency" —
+    /// "iki eşzamanlı akışın aynı state'e korumasız yazması asla olmaz"). Düzeltme:
+    /// Pending→Approved geçişi artık WalletService.TryDebitAsync'teki ile aynı desende,
+    /// tek atomik `UPDATE ... WHERE Status = 'Pending'` ile yapılır — PostgreSQL bu
+    /// satırı UPDATE sırasında kilitler, eşzamanlı ikinci bir UPDATE her zaman 0 satır
+    /// günceller (WHERE'i artık sağlamaz) ve güvenle false döner; hiçbir okuma penceresi
+    /// yoktur.
     /// </summary>
     public async Task<bool> ApproveWithdrawalAsync(Guid id, CancellationToken cancellationToken)
     {
-        var request = await _db.WithdrawalRequests.FirstOrDefaultAsync(w => w.Id == id, cancellationToken);
-        if (request is null || request.Status != WithdrawalRequestStatus.Pending)
+        var claimed = await _db.WithdrawalRequests
+            .Where(w => w.Id == id && w.Status == WithdrawalRequestStatus.Pending)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(w => w.Status, WithdrawalRequestStatus.Approved), cancellationToken);
+
+        if (claimed == 0)
         {
             return false;
         }
 
-        request.Status = WithdrawalRequestStatus.Approved;
-        await _db.SaveChangesAsync(cancellationToken);
+        var request = await _db.WithdrawalRequests.FirstAsync(w => w.Id == id, cancellationToken);
 
         request.Status = WithdrawalRequestStatus.Sent;
         await _db.SaveChangesAsync(cancellationToken);
 
+        var sendFailed = false;
         try
         {
             await _paymentProvider.SendPayoutAsync(request.DestinationLtcAddress, request.AmountLtc, cancellationToken);
@@ -218,10 +287,33 @@ public class WalletService
         {
             _logger.LogError(ex, "Para çekme gönderimi başarısız: {RequestId}", request.Id);
             request.Status = WithdrawalRequestStatus.Failed;
+            sendFailed = true;
         }
 
         request.ProcessedAt = _timeProvider.GetUtcNow().UtcDateTime;
         await _db.SaveChangesAsync(cancellationToken);
+
+        // 🐞 docs/21-payment-sandbox-e2e.md Aşama 5 (Bölüm 7, adım 6) gerçek regtest
+        // bulgusu: gönderim başarısız olduğunda (sandbox'ta BTCPay'in hot wallet'ında
+        // yeterli LTC olmadığı için gelen 422 ile fiilen üretildi) talep `Failed`'a
+        // geçiyor ama talep anında düşülen tutar oyuncunun bakiyesine GERİ
+        // EKLENMİYORDU — para sessizce kayboluyordu. docs/05-payment.md Bölüm 1.9
+        // bunu açıkça kural olarak koyar ("`Failed`/`Rejected` durumunda bakiyeye
+        // geri eklenir", ayrıca Bölüm 11 kabul kriteri) ve RejectWithdrawalAsync
+        // zaten bunu yapıyordu; eksik olan yalnızca bu yoldu.
+        //
+        // ❓ Kalan belirsizlik (müşteriye raporlandı): gönderim on-chain'e
+        // yayınlandıktan SONRA bir hata oluşursa (ör. yanıt okunurken zaman aşımı)
+        // bu iade, zincire çıkmış bir ödemeyle birlikte oluşabilir. Bu ayrımı
+        // güvenilir şekilde yapacak bir sinyal yok (v10'dan beri ayrı bir
+        // reconciliation altyapısı da yok); kural metni "Failed → iade" dediği için
+        // birebir uygulandı, ayrım gerekirse ayrı bir mutabakat kararı gerekir.
+        if (sendFailed)
+        {
+            await CreditAsync(request.PlayerId, request.AmountUsd, cancellationToken);
+            await NotifyBalanceChangedAsync(request.PlayerId, cancellationToken);
+        }
+
         return true;
     }
 
@@ -239,6 +331,7 @@ public class WalletService
         await _db.SaveChangesAsync(cancellationToken);
 
         await CreditAsync(request.PlayerId, request.AmountUsd, cancellationToken);
+        await NotifyBalanceChangedAsync(request.PlayerId, cancellationToken);
         return true;
     }
 

@@ -12,10 +12,12 @@ namespace api.Services.Payments;
 public class PaymentEventNotifier
 {
     private readonly IHubContext<GameHub> _hubContext;
+    private readonly IHubContext<WalletHub> _walletHubContext;
 
-    public PaymentEventNotifier(IHubContext<GameHub> hubContext)
+    public PaymentEventNotifier(IHubContext<GameHub> hubContext, IHubContext<WalletHub> walletHubContext)
     {
         _hubContext = hubContext;
+        _walletHubContext = walletHubContext;
     }
 
     public Task NotifyPaymentConfirmedAsync(string matchId, PaymentConfirmedEvent payload, CancellationToken cancellationToken) =>
@@ -23,4 +25,12 @@ public class PaymentEventNotifier
 
     public Task NotifyPayoutCompletedAsync(string matchId, PayoutCompletedEvent payload, CancellationToken cancellationToken) =>
         _hubContext.Clients.Group(matchId).SendAsync("PayoutCompleted", payload, cancellationToken);
+
+    /// <summary>
+    /// docs/16-wallet-balance-sync.md Bölüm 1: WalletHub'daki `wallet:{userId}`
+    /// grubuna mutlak bakiyeyi yayınlar (delta değil) — aynı mesaj iki kez gelse
+    /// bile state aynı değere set edilir, ayrı bir idempotency mekanizması gerekmez.
+    /// </summary>
+    public Task NotifyWalletBalanceChangedAsync(string playerId, WalletDto balance, CancellationToken cancellationToken) =>
+        _walletHubContext.Clients.Group($"wallet:{playerId}").SendAsync("WalletBalanceUpdated", balance, cancellationToken);
 }
