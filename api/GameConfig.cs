@@ -38,6 +38,19 @@ public static class GameConfig
     public const int PracticeGreyRegionDefenseCount = 10;
     public const bool PracticeFogOfWar = false;
 
+    // 🔒 Kullanıcı talimatı: Practice modunda hiç beklenmez — bot masaya ANINDA gelir
+    // ve maç geri sayım tutmadan başlar. Practice bir eşleşme değil, bir alıştırma
+    // ortamıdır; "rakip bekleniyor" ekranı burada bir bilgi taşımaz, yalnızca oyuncuyu
+    // oyuna girmeden önce ~20-25 sn bekletiyordu (10-15 sn bot bekleme + 10 sn geri sayım).
+    //
+    // ⚠️ SONUÇ — bilinçli kabul edilen ödün: bot anında masaya geldiği için Practice'te
+    // artık iki gerçek oyuncu BİRBİRİYLE EŞLEŞEMEZ. Bekleme penceresi, canlı eşleşmeye
+    // şans tanıyan mekanizmaydı (bkz. Bölüm 7 🔒 "bir süre beklenir"); Practice için
+    // kullanıcı kararıyla kaldırılmıştır. Standart ve VIP odalarda bu pencere AYNEN
+    // durur — para riski taşıyan modlarda gerçek rakip eşleşmesi korunur.
+    public const int PracticeBotMatchWaitSeconds = 0;
+    public const int PracticeLobbyCountdownSeconds = 0;
+
     // ---- Lobi ----
     // 🔒 5 dakika — süre dolduğunda otomatik iptal YOK, oyuncuya İptal Et/Beklemeye
     // Devam Et seçimi sunulur (bkz. Bölüm 7, docs/05-payment.md Bölüm 1.6).

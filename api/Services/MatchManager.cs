@@ -77,8 +77,18 @@ public class MatchManager
 
             if (!isBot && match.Players.Count == 0 && match.Room.Type != RoomType.Vip)
             {
-                match.BotFillDeadlineUtc = now.AddSeconds(
-                    Random.Shared.Next(GameConfig.BotMatchWaitMinSeconds, GameConfig.BotMatchWaitMaxSeconds + 1));
+                // 🔒 Kullanıcı talimatı: Practice'te bot beklenmeden, anında masaya gelir
+                // (bkz. GameConfig.PracticeBotMatchWaitSeconds — orada kabul edilen ödün
+                // de açıklanmıştır). Standart odada 10-15 sn'lik canlı eşleşme penceresi
+                // aynen korunur.
+                //
+                // `Room.IsPractice` yerine bilinçli olarak `Type == Practice`: `IsPractice`
+                // ücreti 0 olan VIP odalarını da kapsıyor, oysa talimat yalnızca paylaşılan
+                // Practice kuyruğu içindi — VIP'in davranışı sessizce değiştirilmez.
+                match.BotFillDeadlineUtc = match.Room.Type == RoomType.Practice
+                    ? now.AddSeconds(GameConfig.PracticeBotMatchWaitSeconds)
+                    : now.AddSeconds(
+                        Random.Shared.Next(GameConfig.BotMatchWaitMinSeconds, GameConfig.BotMatchWaitMaxSeconds + 1));
             }
 
             var player = new Player
@@ -130,8 +140,16 @@ public class MatchManager
 
             if (match.Players.Count == match.Room.MaxPlayers && match.Players.All(p => p.IsPaymentConfirmed))
             {
+                // 🔒 Kullanıcı talimatı: Practice'te geri sayım tutulmaz, maç doğrudan
+                // başlar. Ayrı bir kod yolu açmak yerine geri sayım süresi 0 veriliyor —
+                // EconomyTickService'in Countdown dalı bir sonraki tick'te (≤250 ms)
+                // `now >= CountdownEndsAtUtc` görüp StartPlaying'i çağırır. Böylece harita
+                // kurulumu ve yayın sırası tek bir yerde kalır (kod tekrarı yok).
                 match.Status = MatchStatus.Countdown;
-                match.CountdownEndsAtUtc = now.AddSeconds(GameConfig.LobbyCountdownSeconds);
+                match.CountdownEndsAtUtc = now.AddSeconds(
+                    match.Room.Type == RoomType.Practice
+                        ? GameConfig.PracticeLobbyCountdownSeconds
+                        : GameConfig.LobbyCountdownSeconds);
                 _logger.LogInformation("Lobi doldu, geri sayım başladı: {MatchId}", match.Id);
             }
         }
