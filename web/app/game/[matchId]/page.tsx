@@ -146,7 +146,21 @@ export default function GamePage({ params }: GamePageProps) {
               o yüzden burada ayrı bir "Pes Et" aksiyonu YOK. Menü yalnızca zaten var olan,
               state değiştirmeyen kısayolları tek bir yerde toplar. */}
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-            <SheetTrigger render={<Button variant="outline" size="icon-sm" aria-label="Menü" />}>
+            {/* Dokunma hedefi: buton görsel olarak 28px (`icon-sm`, paylaşılan
+                tasarım sisteminin ölçeği — `components/ui/button.tsx` bu görevde
+                değiştirilmez). Görünümü bozmadan hedefi 44px'e çıkarmak için
+                görünmez bir pseudo-eleman kullanılıyor; bu, ekranda sürekli duran
+                tek küçük kontrol olduğu için önemli. */}
+            <SheetTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Menü"
+                  className="relative after:absolute after:-inset-2 after:content-['']"
+                />
+              }
+            >
               <MenuIcon className="size-4" aria-hidden="true" />
             </SheetTrigger>
             <SheetContent side="right" className="gap-0">
@@ -336,7 +350,14 @@ export default function GamePage({ params }: GamePageProps) {
           de görünmeli, yoksa "asker gönderilemedi" gibi bir uyarı panelin altında kalırdı. */}
       {store.error ? (
         <div className="pointer-events-none fixed inset-x-0 bottom-4 z-60 flex justify-center px-4">
-          <div className="rounded-(--game-radius-sm) border border-destructive/40 bg-popover px-4 py-2 text-sm text-destructive shadow-lg">
+          {/* Zemin bilinçli olarak `--game-panel-solid`, `bg-popover` değil: ölçümde
+              `--destructive` (#f2495c) popover zemininde 4.48:1 veriyor — AA eşiğinin
+              (4.5) kıl payı altında. Daha koyu oyun yüzeyinde aynı kırmızı 4.61:1'e
+              çıkıyor. Paylaşılan `--destructive` token'ına dokunulmadı. */}
+          <div
+            className="rounded-(--game-radius-sm) border border-destructive/40 px-4 py-2 text-sm text-destructive shadow-lg"
+            style={{ background: "var(--game-panel-solid)" }}
+          >
             {store.error}
           </div>
         </div>
@@ -356,6 +377,10 @@ export default function GamePage({ params }: GamePageProps) {
 function GameShell({ children }: { children: React.ReactNode }) {
   return (
     <div
+      // `data-game-shell`: globals.css'teki `prefers-reduced-motion` kuralları
+      // yalnızca bu ağacın içinde geçerli — bu görev sitenin geri kalanının hareket
+      // davranışını değiştirmez (bkz. o bloktaki not).
+      data-game-shell=""
       className="flex h-full min-h-0 w-full flex-col"
       style={{
         background: "var(--game-bg)",
@@ -407,7 +432,12 @@ function OverlayPanel({ children }: { children: React.ReactNode }) {
     <div className="absolute inset-0 z-10 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/45 supports-backdrop-filter:backdrop-blur-[2px]" />
       <Card size="sm" className="relative w-full max-w-sm">
-        <CardContent className="flex flex-col items-center gap-3 text-center">{children}</CardContent>
+        {/* Panel içindeki aksiyonlar ≥44px dokunma hedefi alır. Paylaşılan buton
+            ölçeği (`components/ui/button.tsx`) en fazla 36px veriyor ve bu görevde
+            değiştirilmiyor — yükseklik burada, yalnızca oyun ekranı için yükseltiliyor. */}
+        <CardContent className="flex flex-col items-center gap-3 text-center [&_a]:min-h-11 [&_button]:min-h-11">
+          {children}
+        </CardContent>
       </Card>
     </div>
   );

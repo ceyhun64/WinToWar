@@ -345,3 +345,37 @@
     opacity: 0;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   docs/23-game-ui-refresh-v2.md Aşama 5 — `prefers-reduced-motion` desteği.
+
+   İLKE: bilgi taşıyan hareket KORUNUR, dekoratif/döngüsel hareket durur.
+   Ordu hareketi, varış geri sayımı ve ele geçirme parlaması oyunun DURUMUNU anlatır
+   — bunları kaldırmak hareket hassasiyeti olan bir oyuncuyu bilgiden mahrum bırakır,
+   erişilebilirliği artırmaz. Kaldırılan şey sürekli/döngüsel ölçek hareketi ve
+   dekoratif geçişlerdir.
+
+   Kapsam bilinçli olarak `[data-game-shell]` ile SINIRLANMIŞTIR: bu görev yalnızca
+   oyun ekranını kapsıyor, sitenin geri kalanının hareket davranışı değiştirilmez.
+   ───────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  /* Sürükleme nabzı: büyüyüp sönen döngü yerine sabit bir halka. Kaynağın hangi
+     bölge olduğu bilgisi korunur, sürekli hareket kalkar. */
+  @keyframes game-drag-ping {
+    from,
+    to {
+      transform: scale(1);
+      opacity: 0.75;
+    }
+  }
+
+  /* Dekoratif geçişler (hover opaklığı, bar genişliği) susturulur. `animation`
+     bilinçli olarak HARİÇ: ele geçirme parlaması bir animasyondur ve süresi
+     sıfırlanırsa `forwards` yüzünden doğrudan bitiş değerine atlayıp hiç
+     görünmez — yani bir bilgi kaybolurdu. */
+  [data-game-shell] *,
+  [data-game-shell] *::before,
+  [data-game-shell] *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
