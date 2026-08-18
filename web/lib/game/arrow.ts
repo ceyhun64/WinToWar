@@ -15,9 +15,12 @@ export interface AttackArrowGeometry {
   arrowheadPoints: [Point, Point, Point];
 }
 
-// Kaynak bölge rozetinin (RegionLabel: rx=14/ry=10.5) dışından başlar ki çizgi
-// rozetin içine gömülü görünmesin.
-const SOURCE_PULLBACK = 15;
+// Kaynak bölge rozetinin dışından başlar ki çizgi rozetin içine gömülü görünmesin.
+// docs/23-game-ui-refresh-v2.md Aşama 2: rozet, asker sayısı okunabilirliği için
+// büyütüldü (48×31, yarı-genişlik 24) — bu pay eski/küçük rozete (rx=14) göre
+// ayarlanmıştı ve olduğu gibi bırakılsaydı ok artık rozetin İÇİNDEN çıkıyor
+// görünecekti. Yeni değer = rozet yarı-genişliği + küçük bir nefes payı.
+const SOURCE_PULLBACK = 26;
 // Hedefin merkezine değil, "içine kadar uzanan" bir uca sahip olsun diye merkeze
 // yakın ama tam üstünde değil bir noktada biter (docs Bölüm 16).
 const TARGET_PULLBACK = 5;

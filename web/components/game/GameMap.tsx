@@ -31,6 +31,69 @@ const VIEW_MIN_Y = -9;
 const VIEW_WIDTH = 590;
 const VIEW_HEIGHT = 594;
 
+/**
+ * docs/23-game-ui-refresh-v2.md Aşama 2 — etiket çapası ("pole of inaccessibility").
+ *
+ * `map.json`'daki `region.x/y`, bölgenin sınırlayıcı kutu merkezidir ve içbükey
+ * (concave) bölgelerde kenara çok yakın düşebiliyor — ölçüldü: Mersch'te merkezin
+ * en yakın kenara uzaklığı yalnızca **6 birim**, Differdange'da 10. Bu yüzden asker
+ * sayısı rozeti bu iki bölgede (ESKİ, daha küçük rozet boyutunda bile) kendi
+ * bölgesinin dışına taşıp komşunun alanına giriyordu — yani "bu sayı hangi
+ * bölgenin?" sorusu belirsizleşiyordu. Öncelik zincirinin en tepesindeki bilgi
+ * için kabul edilemez.
+ *
+ * Çözüm: rozet artık kutu merkezine değil, polygon'un İÇİNDE kenarlardan en uzak
+ * noktaya oturur. Kaçış payı 6 → 31 birime çıkar; böylece rozet 12 bölgenin
+ * hepsinde kendi sınırları içinde kalır.
+ *
+ * ⚠️ Bu tamamen bir SUNUM hesabıdır — `map.json` değişmez, `region.x/y` alanı
+ * olduğu gibi durur, oyun mantığı (komşuluk, hit-test, hareket süresi) bu
+ * değerden etkilenmez.
+ */
+function distanceToPolygonEdge(x: number, y: number, polygon: [number, number][]): number {
+  let min = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [x1, y1] = polygon[j];
+    const [x2, y2] = polygon[i];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSquared = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / lengthSquared));
+    min = Math.min(min, Math.hypot(x - (x1 + t * dx), y - (y1 + t * dy)));
+  }
+  return min;
+}
+
+/** Kaba bir ızgara taraması + ardışık daraltma. Harita başına bir kez hesaplanır (bkz. `labelAnchorById`). */
+function labelAnchorForPolygon(polygon: [number, number][]): { x: number; y: number } {
+  const xs = polygon.map((p) => p[0]);
+  const ys = polygon.map((p) => p[1]);
+  let minX = Math.min(...xs);
+  let maxX = Math.max(...xs);
+  let minY = Math.min(...ys);
+  let maxY = Math.max(...ys);
+
+  let best = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, clearance: -Infinity };
+  let step = Math.max(maxX - minX, maxY - minY) / 16;
+
+  for (let pass = 0; pass < 6; pass++) {
+    for (let x = minX; x <= maxX; x += step) {
+      for (let y = minY; y <= maxY; y += step) {
+        if (!isPointInPolygon({ x, y }, polygon)) continue;
+        const clearance = distanceToPolygonEdge(x, y, polygon);
+        if (clearance > best.clearance) best = { x, y, clearance };
+      }
+    }
+    minX = best.x - step;
+    maxX = best.x + step;
+    minY = best.y - step;
+    maxY = best.y + step;
+    step /= 4;
+  }
+
+  return { x: best.x, y: best.y };
+}
+
 /** docs/14-game-map-redesign.md: bölge artık daire değil polygon — hit-test ray-casting ile yapılır. */
 function isPointInPolygon(point: { x: number; y: number }, polygon: [number, number][]): boolean {
   let inside = false;
@@ -135,6 +198,21 @@ export function GameMap({
     return new Map(map.regions.map((r) => [r.id, r]));
   }, [map.regions]);
 
+  /**
+   * docs/23-game-ui-refresh-v2.md Aşama 2: rozetin/etiketin ve sevkiyat uçlarının
+   * ortak dayanak noktası (bkz. `labelAnchorForPolygon`). Harita başına bir kez
+   * hesaplanır ve referansı sabit kalır — RegionLabel'ın memo karşılaştırıcısı bu
+   * kararlılığa güvenir.
+   *
+   * Sevkiyat okları/asker ikonları da bilinçli olarak bu noktayı kullanır: rozet
+   * bir yere, ordu başka bir yere gitseydi, varış geri sayımı rozette oynarken
+   * askerler 38 birim uzakta kaybolurdu. Hareketin SÜRESİ/sonucu sunucudan gelir
+   * ve bu değişiklikten etkilenmez — yalnızca çizilen yolun uçları kayar.
+   */
+  const labelAnchorById = useMemo(() => {
+    return new Map(map.regions.map((r) => [r.id, labelAnchorForPolygon(r.geometry.points)]));
+  }, [map.regions]);
+
   // docs/17-oyun-ici-ui-güclendirme.md Bölüm 8: sahip değişimini tespit edip kısa bir
   // flash tetikler. Fog of War açıkken görünürlük kapandığında sunucu ownerId'yi null
   // gönderir (bkz. MatchStateMapper.ToDto) — bu gerçek bir el değiştirme DEĞİLDİR, bu
@@ -227,15 +305,21 @@ export function GameMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armyArrived]);
 
-  const selectedRegion = selectedRegionId ? regionStateById.get(selectedRegionId) : undefined;
-  const selectedIsMine = selectedRegion?.ownerId === myPlayerId;
-  // docs/03-game-rules.md Bölüm 3/6/15-D.1: saldırı artık komşulukla sınırlı değil —
-  // (GameConfig.AttackAdjacencyOnly=false ile birebir eşleşir) kendi bölgen seçiliyken
-  // haritadaki TÜM diğer bölgeler geçerli bir gönderim hedefidir.
+  // docs/03-game-rules.md Bölüm 3/6/15-D.1: saldırı komşulukla sınırlı DEĞİL
+  // (GameConfig.AttackAdjacencyOnly=false) — kaynak dışındaki her bölge geçerli bir
+  // gönderim hedefidir. Bu kural DEĞİŞMEDİ.
+  //
+  // docs/23-game-ui-refresh-v2.md Aşama 2 — değişen tek şey bu bilginin NE ZAMAN
+  // gösterildiği: eskiden tetikleyici `selectedRegionId` idi, yani bir bölgeye
+  // tıklamak (ki tıklamak yalnızca bilgi panelini açar, saldırı başlatmaz) haritadaki
+  // diğer 11 bölgeyi vurguluyordu. "Her yer hedef" bilgisi her zaman doğru olduğu için
+  // tek başına hiçbir şey söylemiyor, yalnızca gürültü üretiyordu. Artık tetikleyici
+  // AKTİF SÜRÜKLEME: oyuncu gerçekten bir hedef ararken (ve yalnızca o anda) ipucu
+  // görünür. Saldırı doğrulaması (handleDragEnd) bu setten bağımsızdır, dokunulmadı.
   const attackTargets = useMemo(() => {
-    if (!selectedRegionId || !selectedIsMine) return new Set<string>();
-    return new Set(map.regions.filter((r) => r.id !== selectedRegionId).map((r) => r.id));
-  }, [selectedRegionId, selectedIsMine, map.regions]);
+    if (!dragFromRegionId) return new Set<string>();
+    return new Set(map.regions.filter((r) => r.id !== dragFromRegionId).map((r) => r.id));
+  }, [dragFromRegionId, map.regions]);
 
   function toSvgPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     const svg = svgRef.current;
@@ -314,7 +398,10 @@ export function GameMap({
     onSelectRegion(regionId);
   }
 
-  const dragFromRegion = dragFromRegionId ? regionById.get(dragFromRegionId) : undefined;
+  // Sürükleme göstergeleri (nabız halkası + ok) rozetle AYNI noktadan çıkar —
+  // bkz. `labelAnchorById`. Bölgenin geometrik merkezi kullanılsaydı ok, rozetin
+  // görünür konumundan sapan bir yerden başlardı.
+  const dragFromPoint = dragFromRegionId ? labelAnchorById.get(dragFromRegionId) : undefined;
 
   // docs/14-game-map-redesign.md: bölgeler artık boşluksuz bitişik olduğundan, dolgu/kenarlık
   // (RegionShape) ve etiket (RegionLabel) iki AYRI katmanda çizilir — aksi halde sonradan
@@ -336,19 +423,33 @@ export function GameMap({
     const accentColor = playerAccentColor(colorInput);
     const draggable =
       isMine && state.status === "Playing" && (regionState?.soldierCount ?? 0) > MIN_GARRISON_PER_SEND;
-    return { region, regionState, isMine, color, accentColor, ownerSlot, draggable };
+    const anchor = labelAnchorById.get(region.id) ?? { x: region.x, y: region.y };
+    return { region, regionState, isMine, color, accentColor, ownerSlot, draggable, anchor };
   });
 
   return (
+    // docs/23-game-ui-refresh-v2.md Aşama 2 — harita artık çerçeveli bir kart değil.
+    //
+    // Önceki hâlde SVG'nin kendi kenarlığı ve `bg-card` zemini vardı; kap
+    // `max-w-6xl` genişliğinde, harita ise ~1:1 olduğu için `preserveAspectRatio`
+    // gereği ortaya oturuyor ve YANLARDA geniş boş zemin bantları kalıyordu —
+    // "büyük çerçeveye yapıştırılmış küçük resim" görüntüsü. Çözüm haritayı
+    // zorlamak değil, ÇERÇEVEYİ KALDIRMAK: bölgeler zaten tüm harita alanını
+    // boşluksuz kapladığı için ayrı bir zemine ihtiyaç yok, letterbox alanı da
+    // görünmez hale gelir. Bu aynı zamanda "node'lar kart gibi değil, haritanın
+    // doğal parçası gibi" isteğiyle birebir uyumlu.
+    //
+    // `dvh` (`vh` değil): mobilde adres çubuğu açılıp kapandıkça harita yeniden
+    // ölçekleniyordu — projenin geri kalanı da `dvh` kullanıyor (globals.css,
+    // docs/13-scroll-lock.md §2.1). Kabın esnek yükseklik alması (flex shell)
+    // Aşama 4'te sayfa iskeletiyle birlikte ele alınır.
     <svg
       ref={svgRef}
       viewBox={`${VIEW_MIN_X} ${VIEW_MIN_Y} ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-      // docs/23-game-ui-refresh-v2.md Aşama 1: haritanın zemini/kenarı artık genel
-      // kart tokenlarını (`bg-card`/`border-border`) değil, oyun ekranına ait
-      // `--game-*` tokenlarını kullanır — takım renklerinin kontrastı bu zemine
-      // (`--game-map-bg`) karşı ölçüldü (min 4.78:1, bkz. colors.ts). Kabın
-      // ölçüsü/oranı Aşama 2'de ele alınacak.
-      className="w-full h-auto max-h-[75vh] rounded-[var(--game-radius-md)] border border-[var(--game-panel-border)] bg-[var(--game-map-bg)]"
+      // Kap, haritanın kendi oranına (590×594, neredeyse kare) oturtulur:
+      // genişlik hem %100 hem 70dvh ile sınırlandığından SVG kutusu içeriğiyle
+      // aynı orana gelir ve letterbox alanı pratikte kalmaz.
+      className="mx-auto block h-auto w-full max-h-[72dvh] max-w-[min(100%,70dvh)]"
       role="img"
       aria-label="Lüksemburg haritası"
     >
@@ -358,17 +459,19 @@ export function GameMap({
           tüm haritayı kapladığından, hareket/sürükleme göstergeleri bölgelerin ÜSTÜNDE
           (sonra) çizilir — aksi halde tamamen gizlenirlerdi. */}
       <g>
-        {regionRenderData.map(({ region, color, draggable }) => (
+        {regionRenderData.map(({ region, color, isMine, draggable }) => (
           <RegionShape
             key={region.id}
             region={region}
             color={color}
+            // docs/23-game-ui-refresh-v2.md Aşama 2: sahiplik ikinci kanalı — kendi
+            // bölgelerim renkten bağımsız, kalıcı bir halka taşır (bkz. RegionNode).
+            isOwn={isMine}
             isSelected={selectedRegionId === region.id}
             isAttackTarget={attackTargets.has(region.id)}
             isDragSource={dragFromRegionId === region.id}
             isDragHoverTarget={dragHoverTargetId === region.id}
             draggable={draggable}
-            selectionColor={mySelectionColor}
             onClick={() => handleRegionClick(region.id)}
             onDragStart={handleDragStart(region.id)}
             onDragMove={handleDragMove}
@@ -397,7 +500,7 @@ export function GameMap({
           hangi sevkiyatların var olduğu (yapısal) değiştiğinde yeniden render olur. */}
       <ArmyLayer
         markers={armyMarkers}
-        regionById={regionById}
+        pointById={labelAnchorById}
         slotByPlayerId={slotByPlayerId}
         roomType={state.room.type}
         registerHandle={registerHandle}
@@ -408,11 +511,13 @@ export function GameMap({
           başladığında) rozetin etrafında soluk, genişleyip solan bir halka — Tailwind'in
           çekirdek `animate-ping` utility'si zaten tam olarak bu "pulsing ring" efektini
           üretir, ayrı bir animasyon kütüphanesi/keyframe eklenmez. */}
-      {dragFromRegion ? (
+      {dragFromPoint ? (
         <circle
-          cx={dragFromRegion.x}
-          cy={dragFromRegion.y}
-          r={15}
+          cx={dragFromPoint.x}
+          cy={dragFromPoint.y}
+          // Aşama 2: rozet büyüdüğü için (48×31) eski r=15'lik halka rozetin
+          // İÇİNDE kalıyordu — artık rozeti dışarıdan çevreliyor.
+          r={28}
           fill="none"
           stroke={mySelectionColor}
           strokeWidth={1.5}
@@ -424,9 +529,9 @@ export function GameMap({
       {/* docs/18-yeni-oyun-ici ui-gelistirme.md Bölüm 14-17: sürükleme önizlemesi artık
           siyah/dashed bir çizgi değil, sürükleyen oyuncunun kendi renginde, net bir
           arrowhead'i olan bir ok — bkz. computeAttackArrow (lib/game/arrow.ts). */}
-      {dragFromRegion && dragPointerSvg
+      {dragFromPoint && dragPointerSvg
         ? (() => {
-            const arrow = computeAttackArrow(dragFromRegion, dragPointerSvg);
+            const arrow = computeAttackArrow(dragFromPoint, dragPointerSvg);
             if (!arrow) return null;
             return (
               <g pointerEvents="none">
@@ -447,10 +552,11 @@ export function GameMap({
       {/* docs/14-game-map-redesign.md: etiketler (rozet/isim) en üst katmanda, tüm
           bölge polygon'ları çizildikten sonra render edilir — bkz. RegionNode.tsx üstündeki not. */}
       <g pointerEvents="none">
-        {regionRenderData.map(({ region, regionState, isMine, accentColor }) => (
+        {regionRenderData.map(({ region, regionState, isMine, accentColor, anchor }) => (
           <RegionLabel
             key={region.id}
             region={region}
+            anchor={anchor}
             regionState={regionState}
             isMine={isMine}
             accentColor={accentColor}

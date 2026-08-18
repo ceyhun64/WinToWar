@@ -249,11 +249,21 @@
      Bu yüzden sahiplik asla yalnızca renkle gösterilmez — aşağıdaki halkalar
      renkten bağımsız, akromatik bir ikinci kanaldır. */
   --game-ring-own: rgba(255, 255, 255, 0.92);
-  --game-ring-own-width: 2.25px;
   --game-ring-selected: #ffffff;
-  --game-ring-target: rgba(255, 255, 255, 0.34);
-  --game-ring-hover: rgba(255, 255, 255, 0.6);
+  --game-ring-target: rgba(255, 255, 255, 0.32);
+  --game-ring-hover: #ffffff;
   --game-badge-ring: rgba(240, 246, 253, 0.94);
+  /* Bölge kenarlıkları `vectorEffect="non-scaling-stroke"` ile çizilir; yani bu
+     değerler harita ölçeğinden BAĞIMSIZ, gerçek ekran pikselidir. 360px'te de
+     1440px'te de aynı kalınlıkta görünür — aksi halde mobilde sahiplik halkası
+     görünmeyecek kadar incelirdi. Sıralama bir hiyerarşidir: nötr sınır en ince,
+     sürüklerken üzerinde durulan hedef en kalın. */
+  --game-edge-width: 1px;
+  --game-ring-target-width: 1.25px;
+  --game-ring-own-width: 2px;
+  --game-ring-selected-width: 3px;
+  --game-ring-hover-width: 3.5px;
+  --game-badge-ring-width: 2px;
 
   /* ── Yarıçap ─────────────────────────────────────────────────────────────── */
   --game-radius-xs: 6px;

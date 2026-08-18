@@ -2,12 +2,19 @@
 
 import { playerAccentColor } from "@/lib/game/colors";
 import type { ArmyMarker, TroopMarkerHandle } from "@/lib/game/useArmyAnimation";
-import type { MapRegionDto, RoomType } from "@/lib/game/types";
+import type { RoomType } from "@/lib/game/types";
 import { TroopMarker } from "./TroopMarker";
 
 interface ArmyLayerProps {
   markers: ArmyMarker[];
-  regionById: Map<string, MapRegionDto>;
+  /**
+   * docs/23-game-ui-refresh-v2.md Aşama 2: sevkiyatın çıkış/varış noktası artık
+   * bölgenin geometrik merkezi değil, rozetin oturduğu etiket çapası (bkz. GameMap
+   * `labelAnchorById`). Ordu ile rozet aynı noktayı paylaşmasaydı, varış geri sayımı
+   * rozette oynarken askerler bazı bölgelerde 38 birim uzakta kaybolurdu.
+   * Hareketin süresi/sonucu sunucudan gelir, bu değişiklikten etkilenmez.
+   */
+  pointById: Map<string, { x: number; y: number }>;
   slotByPlayerId: Map<string, number>;
   /** docs/03-game-rules.md güncel müşteri kararı: renk paleti oda tipine göre değişir (Standart/Practice/VIP). */
   roomType: RoomType;
@@ -22,13 +29,13 @@ interface ArmyLayerProps {
  * yola çıktı/kalktı) yeniden render olur — pozisyon animasyonu TroopMarker'ın kendi
  * içinde imperatif olarak çalışır, burada React state'i tetiklemez.
  */
-export function ArmyLayer({ markers, regionById, slotByPlayerId, roomType, registerHandle, unregisterHandle, removeMarker }: ArmyLayerProps) {
+export function ArmyLayer({ markers, pointById, slotByPlayerId, roomType, registerHandle, unregisterHandle, removeMarker }: ArmyLayerProps) {
   return (
     <g pointerEvents="none">
       {markers.map((marker) => {
-        const fromRegion = regionById.get(marker.fromRegionId);
-        const toRegion = regionById.get(marker.toRegionId);
-        if (!fromRegion || !toRegion) return null;
+        const fromPoint = pointById.get(marker.fromRegionId);
+        const toPoint = pointById.get(marker.toRegionId);
+        if (!fromPoint || !toPoint) return null;
 
         const colorInput = {
           roomType,
@@ -46,8 +53,8 @@ export function ArmyLayer({ markers, regionById, slotByPlayerId, roomType, regis
           <g key={marker.id}>
             <TroopMarker
               id={marker.id}
-              fromPoint={fromRegion}
-              toPoint={toRegion}
+              fromPoint={fromPoint}
+              toPoint={toPoint}
               departedAtUtc={marker.departedAtUtc}
               arrivesAtUtc={marker.arrivesAtUtc}
               initialSoldierCount={marker.soldierCount}
