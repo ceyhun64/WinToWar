@@ -72,6 +72,43 @@ export default function GamePage({ params }: GamePageProps) {
 
   const store = useGameStore(matchId, playerId ?? "");
 
+  /**
+   * Geri sayımın istemci tarafında akıtılması.
+   *
+   * BULUNAN DAVRANIŞ: `EconomyTickService.TickMatchAsync`, `Countdown` durumundayken
+   * MatchState'i YALNIZCA maç gerçekten başladığında yayınlıyor (`if (started)`).
+   * Yani istemci `countdownRemainingSeconds` değerini Lobby→Countdown geçişinde BİR
+   * KEZ alıyor ve o sayı ekranda donuyor — "9sn içinde başlıyor" yazısı 9'da kalıyor,
+   * geri saymıyor.
+   *
+   * Bu, sunucudan gelen veriyle çözülür: gelen kalan süre bir BİTİŞ ANINA çevrilir ve
+   * ekrandaki sayı yerel olarak akıtılır. Sunucu otoritesi korunur — yerel sayaç yalnızca
+   * sunucunun verdiği süreyi görselleştirir, maçın ne zaman başlayacağına dair hiçbir
+   * karar vermez (başlangıç yine sunucudan gelen `Playing` state'iyle gelir).
+   *
+   * ⚠️ Alternatif çözüm sunucunun Countdown sırasında da yayın yapması olurdu; `api/**`
+   * bu görevin kapsamı dışında olduğu için istemci tarafında çözüldü. Sunucu ileride
+   * yayın yapmaya başlarsa bu kod yine doğru çalışır (her yeni değer sayacı tazeler).
+   */
+  const serverCountdownSeconds =
+    store.state?.status === "Countdown" ? store.state.countdownRemainingSeconds : null;
+  const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (serverCountdownSeconds === null || serverCountdownSeconds === undefined) {
+      setCountdownSeconds(null);
+      return;
+    }
+    const endsAt = Date.now() + serverCountdownSeconds * 1000;
+    const update = () => setCountdownSeconds(Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)));
+    update();
+    // 250 ms: gösterilen saniye, saniye sınırından en fazla çeyrek saniye geç
+    // güncellensin. Saniyede bir tetiklemek sayının bir tık gecikmeli görünmesine
+    // ("9" iken 8'e düşmesi gerekirken bir süre daha 9 kalması) yol açardı.
+    const intervalId = setInterval(update, 250);
+    return () => clearInterval(intervalId);
+  }, [serverCountdownSeconds]);
+
   if (playerId === undefined) {
     return null;
   }
@@ -123,6 +160,15 @@ export default function GamePage({ params }: GamePageProps) {
   // bunu beklemeden burada da açıkça bildirilir (docs/17 Bölüm 9 "Defeat" geri bildirimi).
   const isEliminatedButWatching = state.status === "Playing" && (myPlayer?.isEliminated ?? false);
   const isLobbyPhase = state.status === "Lobby" || state.status === "Countdown";
+  /**
+   * Kullanıcı talimatı: Practice odasında maç kodu ve geri sayım metni gösterilmez.
+   *
+   * Gerekçe (yorum olarak): maç kodu davet/destek referansıdır — Practice tek kişilik,
+   * bota karşı, para taşımayan bir moddur; orada kod ne paylaşılır ne de bir ödeme
+   * itirazında kullanılır, yani ekranda yalnızca gürültüdür. Aynı sebeple bekleme
+   * saniyesi de bir bilgi taşımaz (beklenecek bir rakip yok).
+   */
+  const isPractice = state.room.type === "Practice";
 
   function handleAttack(fromRegionId: string, toRegionId: string) {
     if (!hasAttacked) setHasAttacked(true);
@@ -170,9 +216,12 @@ export default function GamePage({ params }: GamePageProps) {
                   <ConnectionDot status={store.connectionStatus} />
                   <span>{connectionLabel(store.connectionStatus)}</span>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Maç kodu: <span className="font-mono">{matchId}</span>
-                </p>
+                {/* Practice'te maç kodu gösterilmez — bkz. `isPractice` notu. */}
+                {isPractice ? null : (
+                  <p className="text-sm text-muted-foreground">
+                    Maç kodu: <span className="font-mono">{matchId}</span>
+                  </p>
+                )}
               </div>
               <SheetFooter>
                 <Button nativeButton={false} variant="outline" render={<Link href="/kurallar" />}>
@@ -280,9 +329,15 @@ export default function GamePage({ params }: GamePageProps) {
           </OverlayPanel>
         ) : isLobbyPhase ? (
           <OverlayPanel>
-            {state.status === "Countdown" && state.countdownRemainingSeconds !== null ? (
+            {state.status === "Countdown" && isPractice ? (
+              // Practice: geri sayım saniyesi gösterilmez (bkz. `isPractice` notu).
+              // Panel yine de boş bırakılmaz — aksi halde kart bomboş görünürdü.
+              <p className="text-base font-semibold">Maç başlıyor…</p>
+            ) : state.status === "Countdown" && countdownSeconds !== null ? (
               <p className="text-base font-semibold tabular-nums">
-                {`Lobi doldu, maç ${state.countdownRemainingSeconds}sn içinde başlıyor.`}
+                {countdownSeconds > 0
+                  ? `Lobi doldu, maç ${countdownSeconds}sn içinde başlıyor.`
+                  : "Lobi doldu, maç başlıyor…"}
               </p>
             ) : (
               <>
@@ -311,9 +366,11 @@ export default function GamePage({ params }: GamePageProps) {
                 ) : null}
               </>
             )}
-            <p className="text-xs text-muted-foreground">
-              Maç kodu: <span className="font-mono font-medium">{matchId}</span>
-            </p>
+            {isPractice ? null : (
+              <p className="text-xs text-muted-foreground">
+                Maç kodu: <span className="font-mono font-medium">{matchId}</span>
+              </p>
+            )}
             {store.lobbyTimeoutReached ? (
               <p className="text-xs text-muted-foreground">
                 Eşleşme süresi doldu — beklemeye devam edebilir ya da ayrılıp ödemenizi iade alabilirsiniz.
