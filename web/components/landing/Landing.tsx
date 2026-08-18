@@ -40,7 +40,17 @@ export function Landing() {
             zaten sığdığı için scroll HİÇ devreye girmez, görünüm birebir aynıdır.
             `html`/`body` scroll kilidi (aynı dosyanın 🔒 asıl talimatı) bozulmaz —
             kaydırma bu `main`'in içinde kalır. */}
-        <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-4 sm:px-6 lg:px-10">
+        {/* docs/25-responsive-v2.md — `justify-center` → `justify-center-safe`.
+            KÖK NEDEN: bir kaydırma kabında ortalanmış (`justify-content: center`)
+            içerik kabından uzun olduğunda taşma İKİ UÇTAN birden olur; üstteki
+            yarısı scroll başlangıcının (scrollTop = 0) YUKARISINA düşer ve
+            kaydırılarak dahi erişilemez — tarayıcı negatif scroll offset'i yoktur.
+            Ölçüm: H1'in üst kısmı 320px'te 45px, 360px'te 34px, 375px'te 31px
+            kırpılıyordu; 390px ve üzerinde içerik zaten sığdığı için 0px.
+            `safe center`, YALNIZCA taşma olduğunda hizayı `start`'a düşürür —
+            taşma yoksa davranışı `center` ile birebir aynıdır, dolayısıyla
+            390/430 referans görünümü piksel olarak değişmez (docs/24 Bölüm 1 🔒). */}
+        <main className="flex min-w-0 flex-1 flex-col items-center justify-center-safe gap-4 overflow-y-auto px-4 sm:px-6 lg:px-10">
           <div className="mx-auto grid w-full min-w-0 max-w-7xl items-center gap-8 lg:grid-cols-[1.1fr_1fr] lg:gap-12">
             <Hero />
             <div className="relative hidden h-[min(50vh,440px)] lg:block">

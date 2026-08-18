@@ -58,8 +58,11 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
   const navLinks = displayName ? PLAYER_NAV_LINKS : GUEST_NAV_LINKS;
 
   return (
-    <header className="w-full min-w-0 px-4 py-4 sm:px-6 lg:px-10">
-      <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between rounded-2xl border border-transparent bg-transparent px-4 py-2.5 sm:px-5">
+    /* docs/25-responsive-v2.md — `px-4`/`gap-4` yerine akışkan `--header-gutter`.
+       390px ve üzerinde birebir 1rem üretir (referans tasarım değişmez), yalnızca
+       daha dar ekranlarda 0.5rem'e iner; gerekçe ve ölçüm globals.css'te. */
+    <header className="w-full min-w-0 px-(--header-gutter) py-4 sm:px-6 lg:px-10">
+      <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between gap-(--header-brand-gap) rounded-2xl border border-transparent bg-transparent px-(--header-gutter) py-2.5 sm:px-5">
         {/* docs/24-responsive-small-screens.md Bölüm 2: `min-w-0` olmadan bir flex
             çocuğunun varsayılan `min-width: auto` değeri onu içeriğinden daha dar
             olmaya bırakmaz; "WinToWar" tek kelime olduğu için satır 320–375px'te
@@ -82,8 +85,14 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
           <span className="truncate">WinToWar</span>
         </Link>
         {!minimal ? (
-          <div className="flex min-w-0 items-center gap-4">
-            <nav className="flex min-w-0 flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex min-w-(--header-actions-min) items-center gap-(--header-gutter)">
+            {/* docs/25-responsive-v2.md — `min-w-0` tek başına yanlıştı: nav
+                daralabiliyor ama tek kelimelik linki kırpılamıyor, dolayısıyla
+                kutusunun dışına taşıp yanındaki butonun üstüne biniyordu.
+                `--header-nav-min` 390px'te 0 (bugünkü davranış), daha dar
+                ekranlarda nav'ın min-content genişliğini taban yapar; daralma
+                böylece tamamen `truncate`'li logo bloğuna yönelir. */}
+            <nav className="flex min-w-(--header-nav-min) flex-wrap items-center gap-4 text-sm text-muted-foreground">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}

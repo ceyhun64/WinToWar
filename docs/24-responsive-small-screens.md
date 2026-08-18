@@ -61,8 +61,14 @@ clamp(<alt sınır>, calc(<mevcut değer> + (100vw - 390px) * k), <mevcut değer
 | `--landing-gap` | Landing dikey ritmi (`gap-6`) | 13.5 | 19.5 | 21.8 | **24.0** | 24.0 |
 | `--landing-cta-h` | Landing CTA yüksekliği (`h-16`) | 46.5 | 56.5 | 60.3 | **64.0** | 64.0 |
 | `--landing-stat-icon` | Landing istatistik ikonu (`size-10`) | 32.0 | 36.4 | 38.2 | **40.0** | 40.0 |
+| `--header-gutter` | Paylaşılan `Header` `px-4`/`gap-4` (bkz. §9.2) | 8.0 | 12.6 | 14.3 | **16.0** | 16.0 |
+| `--header-nav-min` | `Header` nav taban genişliği (§9.2) | 52.0 | 52.0 | 52.0 | **0.0** | 0.0 |
+| `--header-actions-min` | `Header` sağ blok taban genişliği (§9.2) | 235.0 | 239.6 | 241.3 | **0.0** | 0.0 |
+| `--header-brand-gap` | `Header` logo ↔ gezinme asgari ayrımı (§9.2) | 12.0 | 12.0 | 7.5 | **0.0** | 0.0 |
 
 (değerler px)
+
+🛠️ Son dört token formülün **ters yönlü** kullanımıdır: değer 390px'te **sıfırdır** (yani kural yokmuş gibi davranır, referans tasarım birebir korunur) ve yalnızca daha dar ekranlarda büyür. Deseni bozmaz — aynı "390px'te mevcut değeri üret, sadece altında değiş" kuralının bir taban (`min-width`) üzerinde uygulanmış hâlidir.
 
 🛠️ `--landing-cta-h`'nin alt sınırı bilinçli olarak **2.75rem = 44px**: dokunma hedefi hiçbir genişlikte eşiğin altına inmez.
 
@@ -71,6 +77,8 @@ clamp(<alt sınır>, calc(<mevcut değer> + (100vw - 390px) * k), <mevcut değer
 Akışkan token **son çaredir**. Taşmanın en yaygın kök nedeni boşluk değil, **flex çocuklarının varsayılan `min-width: auto` değeridir** — bu, bir çocuğun içeriğinden dar olmasını engeller ve satırı kapsayıcının dışına taşırır.
 
 Önce bu sorulur: *"Bu satır daralabiliyor mu?"* Cevap hayırsa çözüm `min-w-0` + `truncate`'tir; bu, 390px ve üzerinde içerik zaten sığdığı için **hiçbir görsel etki yaratmaz** ve regresyon kuralına doğal olarak uyar. Boşluk küçültme yalnızca daralma payı tükendiğinde devreye girer.
+
+⚠️ **Sınırı (§9.2'de bulundu):** `min-w-0` yalnızca içeriği gerçekten kırpılabilen (`truncate`) ya da sarabilen çocuklar için doğrudur. Kırpılamayan bir çocukta (ör. tek kelimelik bir nav bağlantısı) `min-w-0`, kutuyu içeriğinden dar bırakır ve metin kutunun dışına taşıp komşusunun üstüne biner — yani taşmayı çözmez, **görünür kılar**. `min-w-0` vermeden önce her zaman "bu çocuk kırpılabiliyor mu?" diye sorulur.
 
 ### 2.3 🛠️ `min-[22rem]` istisnası
 
@@ -118,13 +126,21 @@ Bu desen daha önce oyun ekranındaki menü butonunda yerel olarak vardı; buray
 
 **Ölçüldü** (Chromium, 320×568, `pointer: coarse`): `Giriş Yap` butonu görünür 238×32, `::after` 236×**44**, merkezden 21px yukarıdaki hit-test butonun kendisine düşüyor.
 
-### 3.1 ❓ Metin bağlantıları kriteri karşılamıyor
+### 3.1 Metin bağlantıları
 
-`<button>` öğelerinde ≥44px sağlandı. **Düz `<a>` metin bağlantılarında sağlanamadı** — footer linkleri (`Kurallar`, `SSS`, `Kullanım Şartları`…) ~17px, cümle içi linkler (`Kayıt olun`, `Şifremi unuttum`) ~16px yüksekliğinde.
+`<button>` öğelerinde ≥44px her genişlikte sağlandı. Düz `<a>` bağlantıları o kuralın kapsamı dışındaydı ve ~17px yükseklikte kalıyordu; iki ayrı karar verildi.
 
-🛠️ Bunlara dokunulmadı, çünkü 44px'e çıkarmak için gereken dikey nefes payı (footer'da `gap-y-1` → `gap-y-3` civarı) **390–430px'te de** görünür bir değişiklik üretirdi ve Bölüm 1'i ihlal ederdi. WCAG 2.2 "Target Size (Minimum)" da bir metin bloğu/cümle içindeki bağlantıları muaf tutar.
+**Footer gezinme bağlantıları — 🛠️ 24×24 (WCAG 2.2 AA), yalnızca 390px altında.**
 
-❓ **Müşteri kararı gerekiyor:** footer/inline metin bağlantılarının dokunma hedefi için (a) mevcut kompakt görünüm korunsun mu, yoksa (b) 390–430px dahil footer bir miktar büyüsün mü.
+44px'e çıkarmak satır arasının ~27px açılmasını gerektirir; iki satırlık footer navigasyonunda bu ~54px'lik bir büyüme demektir. Dahası `gap-y-1` (4px) korunurken hedefleri 44px'e zorlamak komşu satırların hedeflerini **üst üste bindirir** — yani yanlış bağlantıya basma ihtimalini artırır, kullanılabilirliği düşürür.
+
+Bunun yerine WCAG 2.2 AA "Target Size (Minimum)" eşiği olan 24×24 CSS px sağlandı (dikey 6px + yatay 4px iç boşluk → ölçülen **28.5×28.5**). Bağlantıların arka planı/çerçevesi olmadığı için bu, ekranda yalnızca satır aralığının bir miktar açılması olarak görünür.
+
+🔒 Kural `@media (pointer: coarse) and (max-width: 389.98px)` ile sınırlandırıldı: ölçümde bu iç boşluk footer'ı 73px'ten 109px'e çıkarıyor ve Bölüm 1'in regresyon kuralı 390–430px'te böyle bir büyümeye izin vermiyor. Görev talimatının başarı ölçütü de zaten "320px genişlikte ve landscape modda" başlığı altında tanımlanmıştır.
+
+**Cümle içi bağlantılar — 🛠️ kapsam dışı.** ("Hesabınız yok mu? **Kayıt olun**", "**Şifremi unuttum**".) WCAG 2.2 bir metin bloğu/cümle içindeki bağlantıları bu ölçütten açıkça muaf tutar; büyütmek metin akışını bozar.
+
+❓ 390px ve üzeri telefonlarda da aynı hedef büyütmesi isteniyorsa `max-width` koşulu kaldırılır — bu, müşteri onayı gerektiren görünür bir tasarım değişikliğidir.
 
 ---
 
@@ -155,6 +171,15 @@ Attribute yalnızca `app/game/[matchId]/page.tsx`'teki harita sarmalayıcısınd
 
 `user-select`/`-webkit-touch-callout`: harita gerçek `<text>` düğümleri içerir (bölge adı + asker sayısı); bunlar olmadan iOS'ta sürükleme metin seçimine düşüyor ve uzun basmada callout menüsü açılıyordu.
 
+**Kök neden gerçek tarayıcıda doğrulandı.** Çalışan bir Practice maçında, dokunmatik bir viewport'ta ölçülen `getComputedStyle` değerleri:
+
+| Eleman | `touch-action` |
+|---|---|
+| `[data-game-map-surface]` (HTML sarmalayıcı) | `none` |
+| `g[role="button"]` (SVG bölge — eski kuralın verildiği yer) | **`auto`** |
+
+SVG `<g>` `none` değerini ne kendisi alıyor ne de atasından miras alıyor — yani eski kod oraya `touch-none` verse bile etkisiz kalıyordu. Düzeltmenin neden HTML katmanında olması gerektiğinin doğrudan kanıtı budur.
+
 ### 4.2 🔒 İkinci, bağımsız hata: `pointercancel` saldırı gönderiyordu
 
 `onPointerCancel` ile `onPointerUp` **aynı** handler'a bağlıydı ve o handler koşulsuz `onAttack(...)` çağırıyordu.
@@ -184,17 +209,34 @@ Aşağıdakiler denetlendi ve **geçerli çıkmadı** — ileride aynı semptom 
 - **Fare-özel handler:** `components/game` + `lib/game` altında tek bir `onMouse*` yok.
 - **Üst katmanlar dokunuşu yutuyor:** tüm overlay'ler `pointerEvents="none"` taşıyor (`ArmyLayer`, capture flash, ok/nabız, `RegionLabel`, `StatusBanner`, ipucu bandı, `DevFpsOverlay`).
 - **Passive listener:** oyun kodunda manuel `addEventListener('pointer*'/'touch*')` yok; her şey React synthetic.
-- **SVG koordinat dönüşümü:** `toSvgPoint` zaten doğru — `getScreenCTM().inverse()` + `createSVGPoint`. Ölçek sabit varsayan hesap yok.
+- **SVG koordinat dönüşümü:** `toSvgPoint` zaten doğru — `getScreenCTM().inverse()` + `createSVGPoint`. Ölçek sabit varsayan hesap yok. (Bölüm 4.6'daki testte 390px'e ölçeklenmiş haritada hedef bölge doğru bulundu.)
 
 ### 4.5 `13-scroll-lock.md` ile ilişki — çelişki yok
 
 O dosyanın Bölüm 1.5'teki 🔒 kısıtı ("bu görev oyun ekranındaki pointer/touch davranışına dokunmaz") düzeltmeyi **yasaklamaz, bu göreve bırakır**. Global `overflow: hidden` + `overscroll-behavior: none` jest sahiplenmesini azaltır ama `touch-action: auto` olduğu sürece ortadan kaldırmaz. Düzeltme `html`/`body`'ye değil yalnızca harita yüzeyine uygulandığı için v2 kararları bozulmadı.
 
-### 4.6 ❓ Doğrulama durumu
+### 4.6 Doğrulama — çalışan bir maçta ölçüldü
 
-Kök neden, düzeltme ve derlenmiş CSS çıktısı doğrulandı (`[data-game-map-surface]{touch-action:none;…}` üretilen CSS'te mevcut). **Gerçek dokunmatik cihazda uçtan uca maç testi yapılmadı** — bu, çalışan bir backend + gerçek bir maç oturumu gerektiriyor. Görev talimatı Bölüm 7 bunu açıkça istiyor.
+Görev talimatı Bölüm 7, DevTools cihaz emülasyonunu yetersiz sayıp "en azından touch girdi simülasyonu açıkken" doğrulama istiyor. Test, **çalışan backend + gerçek Practice maçı** üzerinde, Chromium'a CDP `Input.dispatchTouchEvent` ile **gerçek dokunma girdisi** gönderilerek yapıldı. (Playwright'ın fare API'si `touch-action` kararını test etmez; CDP touch olayları tarayıcının jest sahiplenme/`pointercancel` akışından gerçekten geçer.)
 
-❓ Gerçek cihazda doğrulanması gerekenler: parmakla bölgeden bölgeye sürükleyip asker gönderme, sürükleme sırasında sayfanın kaymaması/zoom olmaması, parmak kaynak bölgenin dışına çıkınca sürüklemenin kopmaması, ikinci parmağın sürüklemeyi bozmaması.
+Saldırının gidip gitmediği, asker sayısı karşılaştırmasıyla değil — oyun canlı ve her saniye üretim var — **SignalR WebSocket çerçevelerindeki `AttackRegion` çağrıları sayılarak** ölçüldü.
+
+| Talimat Bölüm 7 ölçütü | Sonuç |
+|---|---|
+| Parmakla bölgeden bölgeye sürükleyip asker gönderilebiliyor | ✅ 390px'te sürükleme yapıldı, asker gönderildi |
+| Sürükleme sırasında sayfa kaymıyor / zoom olmuyor | ✅ scroll deltası `{x:0, y:0, main:0}` |
+| Metin seçimi / uzun basma menüsü açılmıyor | ✅ seçim 0 karakter |
+| Sürükleme önizlemesi fare ile aynı çalışıyor | ✅ nabız halkası + hedef vurgusu göründü |
+| Parmak kaynak bölgenin dışına çıkınca sürükleme kopmuyor | ✅ haritanın uzak ucuna sürüklendi, `pointercancel` **0** |
+| Hedef bölge doğru hesaplanıyor (ölçekli haritada) | ✅ doğru hedefe isabet |
+| Kısa dokunuş sürükleme sayılmıyor | ✅ 3px titremeli tap → `AttackRegion` **0**, bilgi paneli açıldı |
+| Sürükleme dokunuş sayılmıyor | ✅ sürükleme sonrası panel açılmadı |
+| İkinci parmak sürüklemeyi bozmuyor | ✅ ikinci parmak eklendiğinde sürükleme sürdü, toplam `AttackRegion` **1** (0 veya 2 değil), `pointercancel` 0 |
+| **Masaüstünde fare davranışı değişmemiş** | ✅ fare sürükleme → `AttackRegion` **1**, önizleme var, panel açılmadı; fare tek tık → `AttackRegion` **0**, panel açıldı |
+
+⚠️ **Test aracının sınırı:** `AuthConfig.RegisterRateLimitPerHour = 5` olduğu için ardışık senaryolarda kayıt yerine giriş kullanıldı; test hesabı ikinci bir API instance'ı (aynı veritabanı, ayrı port) üzerinden oluşturuldu. Bu, uygulamanın değil test kurgusunun sınırlamasıdır; geliştiricinin çalışan sunucularına dokunulmadı.
+
+❓ Gerçek fiziksel cihazda (iOS Safari / Android Chrome) teyit yine de önerilir — özellikle iOS'un callout/seçim davranışı, Chromium'un touch simülasyonuyla birebir aynı değildir.
 
 ---
 
@@ -260,6 +302,17 @@ Playwright + Chromium ile 19 route × 7 viewport (320×568, 360×640, 375×667, 
 | `overflow:hidden` ile sessizce kırpılan içerik | **0** |
 | `npm run build` + TypeScript | Geçti, yeni warning yok |
 
+**Dokunma hedefi ölçümü** (en küçük kenar, px):
+
+| Viewport | Buton | Footer bağlantısı | Footer yüksekliği |
+|---|---|---|---|
+| 320×568 (dokunmatik) | **44.0** | **28.5** | 109 |
+| 390×844 (dokunmatik) | **44.0** | 16.5 | 85 |
+| 430×932 (dokunmatik) | **44.0** | 16.5 | 64 |
+| 1280×800 (fare) | 32.0 | 16.5 | 42 |
+
+Masaüstü satırı, kuralların yalnızca `pointer: coarse` altında çalıştığını doğrular: fare ile gelen görünüm ve hedefler **hiç değişmemiştir**. 390/430 satırındaki footer değeri de Bölüm 3.1'deki 🔒 sınırlamanın çalıştığını gösterir.
+
 ⚠️ **Build notu:** `npm run build` `NEXT_PUBLIC_SITE_URL` ortam değişkeni ister (`docs/12-seo.md` Bölüm 3). `.env`'de tanımlı değil; doğrulama sırasında komut satırından verildi. Bu, bu görevle ilgisiz, önceden var olan bir ortam koşuludur — `.env` değiştirilmedi.
 
 **Ölçülmeyen:** gerçek dokunmatik cihazda uçtan uca maç (bkz. Bölüm 4.6 ❓).
@@ -276,3 +329,77 @@ Playwright + Chromium ile 19 route × 7 viewport (320×568, 360×640, 375×667, 
 - [ ] `pointercancel` mi ele alıyorsun? **`pointerup` ile aynı handler'a bağlama** — iptal bir bırakma değildir, state değiştiren hiçbir işlem tetiklemez (§4.2).
 - [ ] `fixed` ya da portal ile render edilen yeni bir UI mı? `env(safe-area-inset-*)` gerekir — ata padding'i onu kapsamaz (§5).
 - [ ] Yeni bir buton mu? Dokunma hedefi otomatik gelir (§3) — `components/ui/button.tsx`'e dokunma, yerel bir `after:*` kopyası da yazma.
+- [ ] Bir kaydırma kabında içerik mi ortalıyorsun? **`justify-center` DEĞİL, `justify-center-safe`** — taşma olduğunda üst yarı erişilemez hâle gelir (§9.1).
+- [ ] Bir flex çocuğuna `min-w-0` mı veriyorsun? O çocuğun içeriği **kırpılabiliyor mu** (`truncate`/sarma) diye sor. Kırpılamıyorsa `min-w-0` taşmayı görünür kılar, gizlemez (§9.2).
+- [ ] Örtüşme mi arıyorsun? DOM sırasına güvenme; `scripts/shot.mjs` hit-test denetimini kullan (§9.4).
+
+---
+
+## 9. `docs/25-responsive-v2.md` turu — görsel doğrulama ve düzeltmeler
+
+Bu tur `scripts/shot.mjs` (Playwright) ile 29 route × 6 viewport'u hem oturumlu hem oturumsuz gezdi, screenshot'ları **görsel olarak** inceledi ve iki gerçek küçük-ekran hatasını düzeltti. 🔒 Turun bağlayıcı kısıtı: **390×844 ve 430×932 baseline ile piksel olarak aynı kalacak.** Bu kısıt hiçbir yerde esnetilmedi; sağlanamayan düzeltmeler uygulanmadı ve §9.3'te listelendi.
+
+### 9.1 🔒 Landing H1'in üstten kırpılması — `justify-center-safe`
+
+**Belirti.** `/` sayfasında `FETHET. SAVUN. KAZAN.` başlığının üst kısmı kesiliyordu: 320px'te **45px**, 360px'te **34px**, 375px'te **31px**; 390px ve üzerinde 0px.
+
+**Kök neden.** §6.1'de `overflow-hidden` → `overflow-y-auto` yapılan `main`, `justify-center` taşıyor. Bir kaydırma kabında `justify-content: center`, içerik kaptan uzun olduğunda taşmayı **iki uçtan birden** üretir; üstteki yarı `scrollTop = 0`'ın **yukarısına** düşer ve tarayıcıda negatif kaydırma olmadığı için kaydırılarak dahi erişilemez. Yani §6.1'in eklediği iç scroll, alttaki taşmayı kurtarmış ama üsttekini kurtarmamıştı.
+
+**Çözüm.** `components/landing/Landing.tsx` → `justify-center` yerine `justify-center-safe` (`justify-content: safe center`, Tailwind 4.3). `safe`, **yalnızca taşma varken** hizayı `start`'a düşürür; taşma yoksa `center` ile birebir aynıdır — bu yüzden 390/430 piksel olarak değişmez (ölçüldü: fark 0).
+
+🛠️ Alternatif olan "`justify-center` kaldır + çocuğa `m-auto`" desenine gidilmedi: `safe` anahtar kelimesi niyeti doğrudan ifade eder ve tek kelimelik bir değişikliktir.
+
+### 9.2 🔒 Paylaşılan `Header`'da gezinme ↔ buton örtüşmesi
+
+**Belirti.** Oturumsuz durumda, `Header` kullanan **her** sayfada `Kurallar` bağlantısı `Giriş Yap` bağlantısının üstüne biniyordu ("KurallarGiriş Yap") — 320, 360 ve 375px'te okunamaz ve yanlış hedefe basılabilir hâlde.
+
+**Kök neden (ölçüldü, Chromium `/giris`).** Header'ın doğal içerik genişliği **384px**; kullanılabilir alan 320px'te 256px, 375px'te 311px. Hem logo bloğu hem nav `min-w-0` taşıdığı için daralma ikisi arasında **oransal olarak paylaşılıyordu**. Logo `truncate` ile güvenli kırpılıyor, ama nav'ın tek kelimelik çocuğu (`Kurallar`) kırpılamıyor: nav kutusu daralınca metin kutunun **dışına taşıp** komşusunun üstüne biniyordu. Ölçülen nav genişliği / min-content: 320→0/50, 360→1/50, 375→11/50, 390→21/50, 430→47/50, 768→50/50.
+
+> Bu, §2.2'nin ("önce `min-w-0`") **sınırıdır** ve oraya bir soru olarak eklendi: `min-w-0` yalnızca içeriği gerçekten kırpılabilen (truncate/sarma) çocuklar için doğrudur. Kırpılamayan bir çocukta `min-w-0`, taşmayı çözmez — **görünür** kılar.
+
+**Çözüm.** Daralma tamamen `truncate`'li logo bloğuna yönlendirildi. Dört akışkan token (§2.1), hepsi 390px'te **sıfır etki**:
+
+| Token | Ne yapar |
+|---|---|
+| `--header-nav-min` | nav'a min-content tabanı verir (3.25rem), daralmayı durdurur |
+| `--header-actions-min` | nav + boşluk + giriş/kayıt bloğunu kapsayan sağ bloğa taban verir; değerini sabit varsaymaz, bileşenlerinden `calc()` ile hesaplar |
+| `--header-gutter` | `px-4`/`gap-4`'ü 320px'te 0.5rem'e indirir; taban genişlikler ancak bu boşlukla sığıyor |
+| `--header-brand-gap` | `justify-between` garanti boşluk vermediği için logo ile gezinme arasına asgari ayrım koyar |
+
+**Sonuç.** 320px'te header temiz bir "ikon + Kurallar + Giriş Yap + Kayıt Ol" satırına döner (marka yazısı en dar ekranda tamamen kırpılır, ikon kalır). 390/430/768'de **ölçülen kutu değerleri ve pikseller birebir aynı** kaldı.
+
+⚠️ `components/landing/Navbar.tsx` aynı yapıyı taşır ama gezinme linkleri `hidden md:flex` olduğu için dar ekranda çakışma **üretmiyor** — bilinçli olarak dokunulmadı ("yolu geçmişken düzeltme" yasağı).
+
+### 9.3 ❓ Bulunan ama 🔒 kısıt yüzünden UYGULANMAYAN düzeltmeler
+
+Aşağıdakiler gerçek hatadır, kök nedeni tespit edilmiştir ve **düzeltmeleri hazırdır**; ancak hepsi 390px **ve/veya** 430px'te de mevcut olduğu için düzeltme o genişlikleri de değiştirir ve turun 🔒 kısıtını ihlal ederdi. Kısıt kaldırılırsa hepsi tek satırlık müdahalelerdir.
+
+| # | Yer | Belirti | Kök neden | Görüldüğü genişlikler |
+|---|---|---|---|---|
+| A | `Header` (oturumsuz) | `Kurallar` ↔ `Giriş Yap` teması/binmesi **390px'te sürüyor** | §9.2 ile aynı; 390px zaten daralma rejiminde (nav 21/50) | 390 |
+| B | `Header` (oturumlu) | nav iki satıra sarıyor (`Lobi` / `Kurallar`), kullanıcı adı `A…`'ya iniyor | aynı genişlik açığı; `flex-wrap` sarmayı 390/430'da da tetikliyor | 320–430 |
+| C | `/admin/odemeler` | Çekim kartındaki **`Onayla` / `Reddet` butonları tamamen kırpılıyor** — admin telefondan çekim onaylayamıyor | kart `overflow-hidden`; içerik 503px, kutu 288–398px | 320–430 |
+| D | `/admin/loglar` | Log satırları sessizce kırpılıyor, mesaj okunamıyor | `whitespace-nowrap` + yatay scroll yok | 320–768 |
+| E | `components/game/ActionPanel.tsx` | Sheet'in `absolute top-4 right-4` kapatma (×) butonu, sağ üstteki `text-3xl` asker sayısının üstüne biniyor | başlık satırı kapatma butonuna yer ayırmıyor (ör. sağ padding yok); `components/ui/sheet.tsx` §6.4 gereği değiştirilemez, çözüm çağrı yerinde | 320–430 |
+
+🛠️ C ve D için not: §6.3 admin kabuğunu Bölüm 1'in tek istisnası ilan etmişti; bu turun görev talimatı ise istisnasız bir piksel kuralı koydu ve **bu tur için o daha spesifik talimat uygulandı**. Müşteri onayıyla C ve D §6.3 kapsamında düzeltilebilir.
+
+### 9.4 Doğrulama altyapısı — `scripts/shot.mjs`
+
+🛠️ Repoya eklenen tek yeni dosya. Route listesini **varsaymaz**, `web/app` altındaki `page.tsx`'leri gezerek üretir (29 route). Denetimleri:
+
+- **Yatay taşma** — `scrollWidth > clientWidth` (doküman + kap bazlı; yatayda kırpan atalar elenir).
+- **Örtüşme (hit-test).** DOM sırası veya "header'ın altındaki ilk blok" sezgisi yerine: görünür her metin/etkileşimli elemanın üst kenarı boyunca üç noktada `document.elementFromPoint()`. Dönen eleman elemanın kendisi, bir alt öğesi ya da bir **üst** öğesi değilse örtüşmedir. Üst öğe kabul edilir, çünkü §3'ün `[data-slot="button"]::after` dokunma hedefi originating element'i döndürür.
+- **Üstten kırpılma.** Elemanın kutusu, **tüm kırpan atalarla** kesiştirilir; kesişimin üstü kendi üstünden aşağıdaysa erişilemez içerik demektir. §9.1 bu ölçütle yakalandı — yatay taşma metriğiyle **görünmezdi**.
+
+🛠️ Kararlılık (piksel karşılaştırması gürültüsüz olsun diye): `reducedMotion: "reduce"`, `networkidle` + `document.fonts.ready`, CSS animasyon/geçiş sürelerinin 1ms'e indirilmesi (kaldırılması değil — eleman **bitiş** durumunda kalsın diye), `getAnimations().finish()` (framer-motion WAAPI kullanır, CSS süresi onu etkilemez) ve **video dondurma**: Landing'in arka planı `<video>`'dur ve dondurulmadan aynı kod iki turda ~780.000 piksel fark üretiyordu. Dondurduktan sonra kalan fark yalnızca video decode gürültüsüdür ve `-fuzz 5%` eşiğinde tam olarak 0'a düşer — regresyon ölçütü budur.
+
+⚠️ **Harness'ta bir ürün hatası telafi ediliyor.** `web/lib/admin/api.ts:18` istek yolunun başına `NEXT_PUBLIC_API_URL` ekliyor, ardından `authFetch` (`web/lib/identity.ts:145`) aynı tabanı bir kez daha ekliyor → `http://host:portHTTP://host:port/api/...`. Bu geçersiz URL `fetch()` tarafından ağa çıkmadan reddediliyor, dolayısıyla **her `/admin/*` sayfası veriyi hiç yükleyemiyor**. Bu bir işlev hatasıdır, bu turun kapsamı dışındadır ve **düzeltilmemiştir**; `shot.mjs` yalnızca test sırasında `fetch`'i sarmalayarak URL'i normalleştirir, aksi hâlde admin sayfaları gerçek içerikle hiç denetlenemezdi.
+
+### 9.5 Test edilemeyen durumlar
+
+- **`/lobi/[inviteToken]`** — davet tokeni ne API'de ne UI'da dışa veriliyor (`Room.InviteToken` hiçbir DTO'da yok). Yalnızca **"Bu davet artık geçerli değil"** hata durumu denetlendi; dolu lobi görünümü **test edilmedi**.
+- **`/odeme/[invoiceId]`** — test oturumuna ait bir fatura üretilemedi (`Payment.Mode = Fake` girişleri anında onaylıyor, eksik bakiye doğmuyor). Yalnızca **"Invoice bulunamadı"** durumu denetlendi; QR/adres/sayaç taşıyan asıl ödeme ekranı **test edilmedi**.
+- **`/sifre-sifirla/[token]`** — geçersiz token ile form durumu denetlendi.
+- **Dokunmatik sürükleme (Problem B).** Bu tur yalnızca yerleşimi doğrular; §4.6'daki ❓ gerçek cihaz doğrulaması **hâlâ açıktır**, bu turda kapanmadı.
+- **`/game/[matchId]`** oturumlu ve **canlı bir Practice maçıyla** render edildi (`wintowar:match:<id>:playerId` fixture ile localStorage'a yazılır); yerleşimi altı viewport'ta da denetlendi.

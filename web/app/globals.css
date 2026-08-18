@@ -216,6 +216,60 @@
   --landing-cta-h: clamp(2.75rem, calc(4rem + (100vw - 390px) * 0.25), 4rem);
   /* Landing istatistik kartlarındaki ikon kutusu (`size-10` = 2.5rem karşılığı). */
   --landing-stat-icon: clamp(2rem, calc(2.5rem + (100vw - 390px) * 0.12), 2.5rem);
+
+  /* ---------------------------------------------------------------------------
+     docs/25-responsive-v2.md — paylaşılan `Header` (components/layout/Header.tsx).
+
+     ÖLÇÜLEN KÖK NEDEN (Chromium, `/giris`, oturumsuz): header'ın doğal içerik
+     genişliği 384px; 320px'te yalnızca 256px, 375px'te 311px yer var. Hem logo
+     bloğu hem nav `min-w-0` taşıdığı için daralma İKİSİ ARASINDA PAYLAŞILIYOR —
+     ama yalnızca logo `truncate` ile güvenli kırpılıyor; nav'ın tek kelimelik
+     ("Kurallar") çocuğu kırpılamadığı için nav kutusunun DIŞINA taşıp yanındaki
+     "Giriş Yap" bağlantısının üstüne biniyordu ("KurallarGiriş Yap").
+     Ölçülen nav genişliği / içerik genişliği: 320px→0/50, 360px→1/50,
+     375px→11/50, 390px→21/50, 430px→47/50, 768px→50/50.
+
+     ÇÖZÜM iki akışkan token; ikisi de 390px ve üzerinde TAM OLARAK bugünkü
+     değeri verir, yani referans tasarım piksel olarak değişmez (Bölüm 1 🔒):
+
+     1) --header-nav-min: nav'a bir taban genişlik verir, böylece daralma
+        tamamen `truncate`'li logoya yönelir ve taşma/örtüşme imkânsız olur.
+        390px'te 0 (yani bugünkü `min-w-0` davranışı), 377px'in altında 3.25rem
+        (nav'ın ölçülen 50px'lik min-content genişliği + 2px pay).
+     2) --header-gutter: `px-4` (1rem) ve `gap-4` (1rem) karşılığı. Nav artık
+        daralmadığı için 320px'te asgari içerik 266px + 2 boşluk; bu, boşluklar
+        8px'e inmeden 288px'lik alana sığmıyordu. Alt sınır bu yüzden 0.5rem.
+
+     3) --header-actions-min: nav'ı korumak TEK BAŞINA yetmedi. Nav ile giriş
+        butonlarını taşıyan sağ blok da `min-w-0` olduğu için kendi içeriğinden
+        dar kalıyor ve bu kez butonlar bloğun dışına taşıyordu (ölçüldü: 320px'te
+        blok 186px, içeriği 235px). Bu token o bloğa da bir taban verir ve
+        değerini sabit varsaymak yerine bileşenlerinden HESAPLAR:
+        nav tabanı + aradaki boşluk + `shrink-0` giriş/kayıt bloğunun ölçülen
+        10.9375rem (175px) genişliği.
+
+     4) --header-brand-gap: dış satır `justify-between` ile hizalanıyor, yani
+        logo ile sağ blok arasında GARANTİ bir boşluk yok — yalnızca artan yer
+        varsa boşluk oluşuyor. 320px'te artan yer 1px'e düştüğü için kırpılmış
+        marka yazısı ("W…") doğrudan "Kurallar"a yapışıyordu. Bu token asgari bir
+        ayırma boşluğu verir; yan etkisi olarak logoya kalan yer daralır ve
+        `truncate`'li marka yazısı en dar ekranda tamamen görünmez olur — yani
+        320px'te header temiz bir "ikon + gezinme" satırına döner.
+
+     Ölçülen çıktı (px):
+       --header-gutter       320:8.0   360:12.6  375:14.3  390:16.0  430:16.0
+       --header-nav-min      320:52.0  360:52.0  375:52.0  390:0.0   430:0.0
+       --header-actions-min  320:235.0 360:239.6 375:241.3 390:0.0   430:0.0
+       --header-brand-gap    320:12.0  360:12.0  375:7.5   390:0.0   430:0.0
+     --------------------------------------------------------------------------- */
+  --header-gutter: clamp(0.5rem, calc(1rem + (100vw - 390px) * 0.1143), 1rem);
+  --header-nav-min: clamp(0px, calc((390px - 100vw) * 4), 3.25rem);
+  --header-actions-min: clamp(
+    0px,
+    calc((390px - 100vw) * 20),
+    calc(var(--header-nav-min) + var(--header-gutter) + 10.9375rem)
+  );
+  --header-brand-gap: clamp(0px, calc((390px - 100vw) * 0.5), 0.75rem);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -254,6 +308,50 @@
       translate: -50% -50%;
       width: max(100%, 44px);
       height: max(100%, 44px);
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   docs/24-responsive-small-screens.md Bölüm 3.1 — footer bağlantılarının hedefi.
+
+   Bir üstteki kural yalnızca `[data-slot="button"]` içindir; footer'daki gezinme
+   bağlantıları düz `<a>` olduğu için kapsam dışıydı ve ~17px yükseklikte
+   kalıyordu (ölçüldü).
+
+   🛠️ Neden 44px DEĞİL de bu kadar: 44px'e çıkarmak için satır arasının ~27px
+   açılması gerekir; iki satırlık footer navigasyonunda bu ~54px'lik bir büyüme
+   demek ve 390–430px referans tasarımını (Bölüm 1 🔒) belirgin şekilde değiştirir.
+   Dahası, `gap-y-1` (4px) korunurken hedefleri 44px'e zorlamak komşu satırların
+   hedeflerini ÜST ÜSTE bindirir — yani yanlış bağlantıya basma ihtimalini artırır,
+   kullanılabilirliği düşürür.
+
+   Bunun yerine WCAG 2.2 AA "Target Size (Minimum)" eşiği olan 24×24 CSS px
+   sağlanıyor: dikeyde 6px + yatayda 4px iç boşluk hedefi ~29×29'a çıkarır ve
+   `gap-y-1`/`gap-x-4` boşlukları sayesinde hiçbir hedef komşusuyla örtüşmez.
+   Bağlantıların arka planı/çerçevesi olmadığı için bu, ekranda yalnızca satır
+   aralığının bir miktar açılması olarak görünür.
+
+   🔒 Neden `max-width: 389.98px`: ölçümde bu iç boşluk footer'ı 73px'ten 109px'e
+   çıkarıyor. Bölüm 1'in 🔒 regresyon kuralı 390–430px'i referans tasarım ilan
+   ediyor, yani orada böyle bir büyüme kabul edilemez. Görev talimatının başarı
+   ölçütü de zaten "320px genişlikte ve landscape modda" başlığı altında
+   tanımlanmıştır — kural bu yüzden tam olarak o aralığa (390px'in ALTINA)
+   sınırlandırıldı. 390px ve üzerinde footer birebir eskisi gibi kalır.
+   ❓ 390px+ telefonlarda da aynı hedef büyütmesi isteniyorsa `max-width` koşulu
+   kaldırılır; bu, müşteri onayı gerektiren görünür bir tasarım değişikliğidir.
+
+   Kapsam: yalnızca `footer nav a` — hem paylaşılan `components/layout/Footer.tsx`
+   hem Landing'in kendi footer'ı bu yapıyı kullanır, ikisi de tek kuraldan yararlanır.
+   Cümle içi bağlantılar ("Hesabınız yok mu? Kayıt olun", "Şifremi unuttum") bilinçli
+   olarak KAPSAM DIŞI: WCAG 2.2 bir metin bloğu/cümle içindeki bağlantıları bu
+   ölçütten muaf tutar ve onları büyütmek metin akışını bozar.
+   ───────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  @media (pointer: coarse) and (max-width: 389.98px) {
+    footer nav a {
+      padding-block: 0.375rem;
+      padding-inline: 0.25rem;
     }
   }
 }
