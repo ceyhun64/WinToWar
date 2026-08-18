@@ -1,7 +1,11 @@
 import { applySession, authFetch } from "@/lib/identity";
-import type { AuthErrorResponse, AuthResponseDto, PlayerAccountDto } from "./types";
+import type {
+  AuthErrorResponse,
+  AuthResponseDto,
+  PlayerAccountDto,
+} from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5019";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5019";
 
 async function parseAuthResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -23,7 +27,10 @@ async function parseAuthResponse<T>(res: Response): Promise<T> {
 }
 
 export class AuthApiError extends Error {
-  constructor(public code: string, message: string) {
+  constructor(
+    public code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "AuthApiError";
   }
@@ -53,8 +60,14 @@ export async function register(input: RegisterInput): Promise<AuthResponseDto> {
   return dto;
 }
 
-export async function login(email: string, password: string): Promise<AuthResponseDto> {
-  const dto = await postPublic<AuthResponseDto>("/api/auth/login", { email, password });
+export async function login(
+  email: string,
+  password: string,
+): Promise<AuthResponseDto> {
+  const dto = await postPublic<AuthResponseDto>("/api/auth/login", {
+    email,
+    password,
+  });
   applySession(dto.accessToken, toSessionPlayer(dto.player));
   return dto;
 }
@@ -66,7 +79,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
  */
 export async function googleAuth(
   idToken: string,
-  consent?: { ageConfirmed: boolean; termsAccepted: boolean }
+  consent?: { ageConfirmed: boolean; termsAccepted: boolean },
 ): Promise<AuthResponseDto> {
   const dto = await postPublic<AuthResponseDto>("/api/auth/google", {
     idToken,
@@ -94,7 +107,10 @@ export async function forgotPassword(email: string): Promise<void> {
   await postPublic<void>("/api/auth/forgot-password", { email });
 }
 
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<void> {
   await postPublic<void>("/api/auth/reset-password", { token, newPassword });
 }
 
@@ -102,7 +118,10 @@ export async function verifyEmail(token: string): Promise<void> {
   await postPublic<void>("/api/auth/verify-email", { token });
 }
 
-export async function changePassword(currentPassword: string | null, newPassword: string): Promise<void> {
+export async function changePassword(
+  currentPassword: string | null,
+  newPassword: string,
+): Promise<void> {
   const res = await authFetch("/api/auth/change-password", {
     method: "POST",
     body: JSON.stringify({ currentPassword, newPassword }),

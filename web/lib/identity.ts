@@ -12,7 +12,7 @@
 
 // 🛠️ web/lib/game/api.ts'teki API_BASE_URL ile aynı değer — döngüsel import'tan
 // kaçınmak için (game/api.ts zaten bu dosyadan importluyor) burada ayrıca tanımlanır.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5019";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5019";
 
 export interface SessionPlayer {
   id: string;

@@ -3,8 +3,8 @@ import type { PaymentInvoiceDto } from "@/lib/payments/types";
 import type { GameConfigDto, MapDto, MatchStateDto, RoomType } from "./types";
 
 // 🛠️ Varsayım: backend geliştirme ortamında http://localhost:5019 üzerinde çalışır
-// (bkz. api/Properties/launchSettings.json). Farklı bir ortamda NEXT_PUBLIC_API_BASE_URL ile geçilebilir.
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5019";
+// (bkz. api/Properties/launchSettings.json). Farklı bir ortamda NEXT_PUBLIC_API_URL ile geçilebilir.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5019";
 
 export type JoinRoomOutcome = "Joined" | "InsufficientBalance" | "RoomFull";
 

@@ -1,5 +1,8 @@
 import { authFetch } from "@/lib/identity";
-import type { PaymentInvoiceDto, WithdrawalRequestDto } from "@/lib/payments/types";
+import type {
+  PaymentInvoiceDto,
+  WithdrawalRequestDto,
+} from "@/lib/payments/types";
 
 /**
  * docs/11-auth.md Bölüm 1.9/0.1: paylaşılan X-Admin-Key header'ı yerine gerçek
@@ -7,8 +10,14 @@ import type { PaymentInvoiceDto, WithdrawalRequestDto } from "@/lib/payments/typ
  * components/admin/AdminGate.tsx). authFetch zaten Authorization Bearer header'ını
  * ekliyor; [AdminAuth] filtresi bunun Admin rolüne ait olup olmadığını doğrular.
  */
-async function adminFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await authFetch(path, options);
+async function adminFetch<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const res = await authFetch(
+    `${process.env.NEXT_PUBLIC_API_URL}${path}`,
+    options,
+  );
 
   if (res.status === 401) {
     throw new Error("Yetkisiz — admin oturumu geçersiz.");
@@ -28,21 +37,30 @@ export interface AdminMetrics {
   dailyVolumeUsd: string;
 }
 
-export const getAdminMetrics = () => adminFetch<AdminMetrics>("/api/admin/metrics");
+export const getAdminMetrics = () =>
+  adminFetch<AdminMetrics>("/api/admin/metrics");
 
-export const getPendingWithdrawals = () => adminFetch<WithdrawalRequestDto[]>("/api/admin/payments/withdrawals");
+export const getPendingWithdrawals = () =>
+  adminFetch<WithdrawalRequestDto[]>("/api/admin/payments/withdrawals");
 
 export const approveWithdrawal = (id: string) =>
-  adminFetch<void>(`/api/admin/payments/withdrawals/${id}/approve`, { method: "POST" });
+  adminFetch<void>(`/api/admin/payments/withdrawals/${id}/approve`, {
+    method: "POST",
+  });
 
 export const rejectWithdrawal = (id: string) =>
-  adminFetch<void>(`/api/admin/payments/withdrawals/${id}/reject`, { method: "POST" });
+  adminFetch<void>(`/api/admin/payments/withdrawals/${id}/reject`, {
+    method: "POST",
+  });
 
-export const getFailedInvoices = () => adminFetch<PaymentInvoiceDto[]>("/api/admin/payments/invoices/failed");
+export const getFailedInvoices = () =>
+  adminFetch<PaymentInvoiceDto[]>("/api/admin/payments/invoices/failed");
 
 /** docs/05-payment.md Bölüm 10.1: teknik arıza kaynaklı, admin-onaylı manuel iade. */
 export const refundInvoice = (invoiceId: string) =>
-  adminFetch<void>(`/api/admin/payments/invoices/${invoiceId}/refund`, { method: "POST" });
+  adminFetch<void>(`/api/admin/payments/invoices/${invoiceId}/refund`, {
+    method: "POST",
+  });
 
 export interface AdminMatchSummary {
   matchId: string;
@@ -53,7 +71,8 @@ export interface AdminMatchSummary {
   entryFeeUsd: string;
 }
 
-export const getAdminMatches = () => adminFetch<AdminMatchSummary[]>("/api/admin/matches");
+export const getAdminMatches = () =>
+  adminFetch<AdminMatchSummary[]>("/api/admin/matches");
 
 export interface AdminUser {
   playerId: string;
@@ -61,7 +80,8 @@ export interface AdminUser {
   invoices: PaymentInvoiceDto[];
 }
 
-export const getAdminUser = (playerId: string) => adminFetch<AdminUser>(`/api/admin/users/${playerId}`);
+export const getAdminUser = (playerId: string) =>
+  adminFetch<AdminUser>(`/api/admin/users/${playerId}`);
 
 export type SupportTicketStatus = "Open" | "Answered" | "Closed";
 
@@ -75,9 +95,13 @@ export interface AdminSupportTicket {
   createdAtUtc: string;
 }
 
-export const getSupportTickets = () => adminFetch<AdminSupportTicket[]>("/api/admin/support-tickets");
+export const getSupportTickets = () =>
+  adminFetch<AdminSupportTicket[]>("/api/admin/support-tickets");
 
-export const updateSupportTicketStatus = (id: string, status: SupportTicketStatus) =>
+export const updateSupportTicketStatus = (
+  id: string,
+  status: SupportTicketStatus,
+) =>
   adminFetch<void>(`/api/admin/support-tickets/${id}/status`, {
     method: "POST",
     body: JSON.stringify({ status }),
@@ -95,5 +119,7 @@ export const getAdminLogs = (level?: string, search?: string) => {
   if (level) params.set("level", level);
   if (search) params.set("search", search);
   const query = params.toString();
-  return adminFetch<AdminLogEntry[]>(`/api/admin/logs${query ? `?${query}` : ""}`);
+  return adminFetch<AdminLogEntry[]>(
+    `/api/admin/logs${query ? `?${query}` : ""}`,
+  );
 };

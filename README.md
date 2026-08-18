@@ -250,8 +250,8 @@ Only the first five keys appear in the committed `appsettings.json`; the rest ar
 
 | Variable | Required | Default when unset | Purpose |
 |---|---|---|---|
-| `NEXT_PUBLIC_API_BASE_URL` | No | `http://localhost:5019` | Backend REST base URL (`lib/identity.ts`, `lib/game/api.ts`, `lib/auth/api.ts`, `lib/payments/*`) |
-| `NEXT_PUBLIC_API_HUB_URL` | No | `http://localhost:5019/hub/game` | Game hub URL (`lib/game/signalr-client.ts`). The wallet hub URL is always derived from `NEXT_PUBLIC_API_BASE_URL` plus `/hub/wallet` and is not separately configurable |
+| `NEXT_PUBLIC_API_URL` | No | `http://localhost:5019` | Backend REST base URL (`lib/identity.ts`, `lib/game/api.ts`, `lib/auth/api.ts`, `lib/payments/*`) |
+| `NEXT_PUBLIC_API_HUB_URL` | No | `http://localhost:5019/hub/game` | Game hub URL (`lib/game/signalr-client.ts`). The wallet hub URL is always derived from `NEXT_PUBLIC_API_URL` plus `/hub/wallet` and is not separately configurable |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | No | empty string; the button renders but Google sign-in cannot complete | Google OAuth client ID (`components/auth/GoogleContinueButton.tsx`) |
 | `NEXT_PUBLIC_SITE_URL` | **Yes, for production builds** | `http://localhost:3000` in development | Base URL for canonical, Open Graph, `robots.txt`, and `sitemap.xml` URLs (`lib/metadata.ts`) |
 
