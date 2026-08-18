@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { playerAccentColor, regionFillColorByStrength, UNEXPLORED_COLOR } from "@/lib/game/colors";
+import { playerAccentColor, playerFillColor, regionFillColorByStrength, UNEXPLORED_COLOR } from "@/lib/game/colors";
 import { arrowheadPointsAttr, computeAttackArrow } from "@/lib/game/arrow";
 import type { ArmyArrivedEvent, ArmyClashedEvent, ArmyDepartedEvent, MapDto, MatchStateDto } from "@/lib/game/types";
 import { useArmyAnimation } from "@/lib/game/useArmyAnimation";
@@ -114,7 +114,12 @@ const MIN_GARRISON_PER_SEND = 0;
 // docs/17-oyun-ici-ui-güclendirme.md Bölüm 8 "Territory Capture Feedback": bir
 // bölgenin sahibi değiştiğinde kısa süreli bir highlight — süre kısa/hafif tutulur
 // (bkz. TroopMarker'daki aynı "playful ama abartısız" prensip).
-const CAPTURE_FLASH_MS = 650;
+//
+// docs/23-game-ui-refresh-v2.md Aşama 3: 650 → 420 ms. Efekt artık dolgu yıkaması
+// değil sınır darbesi (bkz. render bloğu); bir kenar parlaması anlık okunur, 650 ms
+// boyunca sürmesi bilgi eklemiyor, yalnızca varış geri sayımıyla (700 ms) üst üste
+// binip aynı bölgede iki ayrı hareket yaratıyordu.
+const CAPTURE_FLASH_MS = 420;
 
 interface CaptureFlash {
   id: string;
@@ -171,11 +176,22 @@ export function GameMap({
     return result;
   }, [state.players]);
 
-  // docs/18-yeni-oyun-ici ui-gelistirme.md Bölüm 18/19: seçim/sürükleme/hedef vurgusu
-  // artık sabit siyah değil, o an sürükleyen/seçen oyuncunun kendi kimlik rengi.
-  const mySelectionColor = useMemo(
+  // docs/18-yeni-oyun-ici ui-gelistirme.md Bölüm 18/19'daki `mySelectionColor`
+  // (seçim/hedef vurgusunun oyuncunun koyu kimlik tonunda olması) kaldırıldı:
+  // docs/23-game-ui-refresh-v2.md Aşama 2'de bölge vurguları renkten bağımsız,
+  // akromatik halkalara geçti (bkz. RegionNode durum matrisi) — geriye yalnızca
+  // sürükleme okunun/halkasının rengi kaldı, o da aşağıdaki `myArrowColor`.
+
+  /**
+   * docs/23-game-ui-refresh-v2.md Aşama 3: sürükleme okunun/nabız halkasının rengi.
+   * Bilinçli olarak `playerAccentColor` (koyu ton) DEĞİL, `playerFillColor` (açık
+   * kimlik tonu) — ok hem açık bölge dolgularının hem koyu harita zemininin üstünden
+   * geçiyor; koyu tonlu bir ok zeminde kayboluyordu. Altındaki koyu halo ile birlikte
+   * her iki yüzeyde de okunur (bkz. ok render bloğu).
+   */
+  const myArrowColor = useMemo(
     () =>
-      playerAccentColor({
+      playerFillColor({
         roomType: state.room.type,
         ownerId: myPlayerId,
         ownerSlot: slotByPlayerId.get(myPlayerId) ?? 0,
@@ -481,17 +497,43 @@ export function GameMap({
       </g>
       {/* docs/17-oyun-ici-ui-güclendirme.md Bölüm 8: sahip değişen bölgenin üstüne
           bindirilen, kendi kendine sönen (SVG native <animate>, ek JS/CSS animasyon
-          döngüsü gerekmez) bir flash — GameMap CAPTURE_FLASH_MS sonra state'ten düşürür. */}
+          döngüsü gerekmez) bir flash — GameMap CAPTURE_FLASH_MS sonra state'ten düşürür.
+
+          docs/23-game-ui-refresh-v2.md Aşama 3 — efekt "dolgu yıkaması"ndan "sınır
+          darbesi"ne çevrildi. Önceki hâl tüm polygon'u %65 opaklıkla neredeyse beyaza
+          boyuyordu; bu, bölgenin el değiştirdiği ANDA — yani oyuncunun yeni asker
+          sayısını en çok okumak istediği anda — rozetin çevresini beyaza çeviriyor ve
+          rozeti dolgudan ayıran açık halkayı etkisiz bırakıyordu. Artık ağırlık
+          sınırda: kenar kısaca parlayıp sönüyor, dolgu yalnızca hafifçe aydınlanıyor.
+          Bilgi (bura el değiştirdi) korunuyor, okunabilirlik bozulmuyor. */}
       <g pointerEvents="none">
-        {captureFlashes.map((flash) => (
-          <polygon
-            key={flash.id}
-            points={flash.points.map(([x, y]) => `${x},${y}`).join(" ")}
-            fill="#FAF7F0"
-          >
-            <animate attributeName="opacity" from="0.65" to="0" dur={`${CAPTURE_FLASH_MS / 1000}s`} fill="freeze" />
-          </polygon>
-        ))}
+        {captureFlashes.map((flash) => {
+          const points = flash.points.map(([x, y]) => `${x},${y}`).join(" ");
+          return (
+            <g key={flash.id}>
+              <polygon
+                points={points}
+                fill="#F2F6FC"
+                style={{
+                  opacity: 0,
+                  animation: `game-capture-wash ${CAPTURE_FLASH_MS}ms var(--game-ease-out) forwards`,
+                }}
+              />
+              <polygon
+                points={points}
+                fill="none"
+                stroke="#FFFFFF"
+                strokeWidth={4}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                style={{
+                  opacity: 0,
+                  animation: `game-capture-edge ${CAPTURE_FLASH_MS}ms var(--game-ease-out) forwards`,
+                }}
+              />
+            </g>
+          );
+        })}
       </g>
       {/* docs/15-asker-hareketi-performans.md Bölüm 6.1: bölge SVG'sinin üzerine
           bindirilen, gerçekten hareket eden bir sevkiyat katmanı — statik bir
@@ -507,44 +549,85 @@ export function GameMap({
         unregisterHandle={unregisterHandle}
         removeMarker={removeMarker}
       />
-      {/* docs/16-state.io-gorsel-referans.md Bölüm 1.3: kaynak bölge seçildiğinde (drag
-          başladığında) rozetin etrafında soluk, genişleyip solan bir halka — Tailwind'in
-          çekirdek `animate-ping` utility'si zaten tam olarak bu "pulsing ring" efektini
-          üretir, ayrı bir animasyon kütüphanesi/keyframe eklenmez. */}
+      {/* docs/16-state.io-gorsel-referans.md Bölüm 1.3: sürükleme başladığında kaynak
+          rozetin etrafında genişleyip solan bir halka — "buradan gönderiyorsun".
+
+          docs/23-game-ui-refresh-v2.md Aşama 3: Tailwind'in `animate-ping` utility'si
+          bir CSS `transform: scale()` üretir; SVG'de bunun dönüşüm merkezi (`transform-box`)
+          tarayıcıya göre değişir, dolayısıyla halka bazı tarayıcılarda daireden değil
+          viewBox köşesinden büyür. Yerine SVG'nin kendi `<animate>`'i kullanılıyor —
+          `r` doğrudan animate edildiği için dönüşüm merkezi sorunu hiç doğmaz ve bu,
+          hemen yukarıdaki ele geçirme flash'ıyla aynı desen (ek kütüphane/keyframe yok). */}
       {dragFromPoint ? (
         <circle
           cx={dragFromPoint.x}
           cy={dragFromPoint.y}
-          // Aşama 2: rozet büyüdüğü için (48×31) eski r=15'lik halka rozetin
-          // İÇİNDE kalıyordu — artık rozeti dışarıdan çevreliyor.
+          // Rozetin (48×31) dışından başlar — içeriden büyüseydi sayının üstünü tarardı.
           r={28}
           fill="none"
-          stroke={mySelectionColor}
-          strokeWidth={1.5}
-          opacity={0.55}
-          className="animate-ping"
+          stroke={myArrowColor}
+          strokeWidth={2}
+          vectorEffect="non-scaling-stroke"
           pointerEvents="none"
+          style={{
+            // Dönüşüm merkezi AÇIKÇA veriliyor: SVG'de CSS transform'un varsayılan
+            // referans kutusu tarayıcıya göre değişir; verilmezse halka daireden
+            // değil viewBox köşesinden büyür (eski `animate-ping` kullanımının sorunu).
+            transformBox: "view-box",
+            transformOrigin: `${dragFromPoint.x}px ${dragFromPoint.y}px`,
+            animation: "game-drag-ping 1.15s var(--game-ease-out) infinite",
+          }}
         />
       ) : null}
-      {/* docs/18-yeni-oyun-ici ui-gelistirme.md Bölüm 14-17: sürükleme önizlemesi artık
-          siyah/dashed bir çizgi değil, sürükleyen oyuncunun kendi renginde, net bir
-          arrowhead'i olan bir ok — bkz. computeAttackArrow (lib/game/arrow.ts). */}
+      {/* docs/18-yeni-oyun-ici ui-gelistirme.md Bölüm 14-17: sürükleme önizlemesi net
+          bir arrowhead'i olan bir ok — bkz. computeAttackArrow (lib/game/arrow.ts).
+
+          docs/23-game-ui-refresh-v2.md Aşama 3 — üç şey eklendi:
+          1. GEÇERLİ/GEÇERSİZ AYRIMI. `dragHoverTargetId` doluysa bırakma bir saldırıya
+             dönüşür; boşsa (parmak kaynağın kendi üstünde ya da hiçbir bölgede değil)
+             bırakma hiçbir şey yapmaz. Eskiden iki durum birebir aynı görünüyordu, yani
+             "buraya bırakırsam ne olur" sorusunun görsel cevabı yoktu. Artık geçersiz
+             durumda ok kesikli, soluk ve ucu içi boş — iptal yolu böylece açıkça
+             görünür hale gelir (mevcut sürükleme/bırakma DAVRANIŞI değişmedi, yalnızca
+             görünür oldu; doğrulama hâlâ handleDragEnd'de).
+          2. KONTRAST. Ok, hem açık bölge dolgularının hem koyu harita zemininin üstünden
+             geçiyor; tek renkli bir çizgi ikisinden birinde kayboluyordu. Altına koyu bir
+             halo çizilip üstüne oyuncunun AÇIK kimlik rengi bindiriliyor.
+          3. Uç büyütüldü (bkz. arrow.ts) — yön mobilde de okunuyor. */}
       {dragFromPoint && dragPointerSvg
         ? (() => {
             const arrow = computeAttackArrow(dragFromPoint, dragPointerSvg);
             if (!arrow) return null;
+            const isValidDrop = dragHoverTargetId !== null;
+            const headPoints = arrowheadPointsAttr(arrow.arrowheadPoints);
             return (
-              <g pointerEvents="none">
+              <g pointerEvents="none" opacity={isValidDrop ? 1 : 0.6}>
                 <line
                   x1={arrow.lineStart.x}
                   y1={arrow.lineStart.y}
                   x2={arrow.lineEnd.x}
                   y2={arrow.lineEnd.y}
-                  stroke={mySelectionColor}
-                  strokeWidth={2.5}
+                  stroke="rgba(6,13,24,0.55)"
+                  strokeWidth={7.5}
                   strokeLinecap="round"
                 />
-                <polygon points={arrowheadPointsAttr(arrow.arrowheadPoints)} fill={mySelectionColor} />
+                <line
+                  x1={arrow.lineStart.x}
+                  y1={arrow.lineStart.y}
+                  x2={arrow.lineEnd.x}
+                  y2={arrow.lineEnd.y}
+                  stroke={isValidDrop ? myArrowColor : "#DCE5F2"}
+                  strokeWidth={4}
+                  strokeLinecap="round"
+                  strokeDasharray={isValidDrop ? undefined : "10 8"}
+                />
+                <polygon
+                  points={headPoints}
+                  fill={isValidDrop ? myArrowColor : "none"}
+                  stroke={isValidDrop ? "rgba(6,13,24,0.55)" : "#DCE5F2"}
+                  strokeWidth={isValidDrop ? 1.5 : 3}
+                  strokeLinejoin="round"
+                />
               </g>
             );
           })()

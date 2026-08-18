@@ -23,10 +23,15 @@ export interface AttackArrowGeometry {
 const SOURCE_PULLBACK = 26;
 // Hedefin merkezine değil, "içine kadar uzanan" bir uca sahip olsun diye merkeze
 // yakın ama tam üstünde değil bir noktada biter (docs Bölüm 16).
-const TARGET_PULLBACK = 5;
-const ARROWHEAD_LENGTH = 7;
-const ARROWHEAD_WIDTH = 5.5;
-const MIN_DISTANCE = 1;
+const TARGET_PULLBACK = 8;
+// docs/23-game-ui-refresh-v2.md Aşama 3: uç, "yön okunur bir ok" olacak kadar
+// büyütüldü. Önceki 7×5.5'lik üçgen, 590 birimlik viewBox 360px'e indiğinde
+// ~4×3 piksele düşüyordu — yani okun hangi yöne baktığı mobilde okunmuyordu.
+const ARROWHEAD_LENGTH = 15;
+const ARROWHEAD_WIDTH = 13;
+// Bu eşiğin altında hiç ok çizilmez — parmak henüz kıpırdamışken bir "çöp" ok
+// belirmesin diye. Sürüklemenin başladığı, kaynaktaki nabız halkasından zaten belli.
+const MIN_DISTANCE = 12;
 
 /** Kaynaktan hedefe, net bir arrowhead'i olan bir ok için çizgi + üçgen köşe noktalarını hesaplar. */
 export function computeAttackArrow(from: Point, to: Point): AttackArrowGeometry | null {
@@ -38,14 +43,27 @@ export function computeAttackArrow(from: Point, to: Point): AttackArrowGeometry 
   const ux = dx / distance;
   const uy = dy / distance;
 
-  const lineStart: Point = { x: from.x + ux * SOURCE_PULLBACK, y: from.y + uy * SOURCE_PULLBACK };
-  const tip: Point = { x: to.x - ux * TARGET_PULLBACK, y: to.y - uy * TARGET_PULLBACK };
-  const lineEnd: Point = { x: tip.x - ux * ARROWHEAD_LENGTH, y: tip.y - uy * ARROWHEAD_LENGTH };
+  // docs/23-game-ui-refresh-v2.md Aşama 3 — paylar artık mesafeyle ÖLÇEKLENİR.
+  //
+  // Aşama 2'de rozet büyüdüğü için kaynak payı 15 → 26, uç 7 → 15 oldu. Sabit
+  // paylar toplamı (26 + 15 + 8 = 49 birim) kısa bir sürüklemede mesafeden büyük
+  // kalabiliyor; o durumda `lineEnd` `lineStart`'ın GERİSİNE düşüyor ve ok ters
+  // yöne bakan bozuk bir şekle dönüşüyordu. Paylar mevcut mesafeden pay alacak
+  // şekilde kısıtlanınca ok her mesafede geçerli kalır, yalnızca küçülür.
+  const targetPullback = Math.min(TARGET_PULLBACK, distance * 0.12);
+  const available = distance - targetPullback;
+  const sourcePullback = Math.min(SOURCE_PULLBACK, available * 0.5);
+  const headLength = Math.max(0, Math.min(ARROWHEAD_LENGTH, (available - sourcePullback) * 0.9));
+  const headWidth = ARROWHEAD_WIDTH * (headLength / ARROWHEAD_LENGTH);
+
+  const lineStart: Point = { x: from.x + ux * sourcePullback, y: from.y + uy * sourcePullback };
+  const tip: Point = { x: to.x - ux * targetPullback, y: to.y - uy * targetPullback };
+  const lineEnd: Point = { x: tip.x - ux * headLength, y: tip.y - uy * headLength };
 
   const perpX = -uy;
   const perpY = ux;
-  const base1: Point = { x: lineEnd.x + perpX * (ARROWHEAD_WIDTH / 2), y: lineEnd.y + perpY * (ARROWHEAD_WIDTH / 2) };
-  const base2: Point = { x: lineEnd.x - perpX * (ARROWHEAD_WIDTH / 2), y: lineEnd.y - perpY * (ARROWHEAD_WIDTH / 2) };
+  const base1: Point = { x: lineEnd.x + perpX * (headWidth / 2), y: lineEnd.y + perpY * (headWidth / 2) };
+  const base2: Point = { x: lineEnd.x - perpX * (headWidth / 2), y: lineEnd.y - perpY * (headWidth / 2) };
 
   return { lineStart, lineEnd, arrowheadPoints: [tip, base1, base2] };
 }

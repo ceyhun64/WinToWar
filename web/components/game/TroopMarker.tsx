@@ -33,7 +33,28 @@ const DEATH_MS = 320;
 // kaldırıldı. Performans/okunabilirlik için üst sınır var (koca bir orduyu tek tek
 // yüzlerce nokta olarak çizmek hem yavaşlar hem "kalabalık" değil "karmaşa" hissi verir).
 const MAX_VISIBLE_TROOPS = 10;
-const TROOP_ICON_RADIUS = 3.1;
+
+/**
+ * docs/23-game-ui-refresh-v2.md Aşama 3 — ikon yarıçapı artık sabit değil, sevkiyatın
+ * büyüklüğüyle birlikte hafifçe büyür.
+ *
+ * Gerekçe: müşteri kararı gereği ekranda sayı rozeti YOK ve ikon adedi
+ * `MAX_VISIBLE_TROOPS`'ta tavan yapıyor — yani 10 asker gönderen bir sevkiyat ile
+ * 300 asker gönderen bir sevkiyat BİREBİR aynı görünüyordu. Öncelik zincirinin en
+ * tepesi "asker sayıları" olduğu için bu gerçek bir bilgi kaybı. Boyut, sayıyı geri
+ * getirmeden (🔒 "bir sayı rozetiyle DEĞİL" kararı korunuyor) büyüklük hissini verir.
+ *
+ * Ölçek bilinçli olarak logaritmik ve dar tutuldu (yalnızca ~%40 büyüme): amaç
+ * "kabaca ne kadar büyük bir dalga geliyor" hissi, kesin bir okuma değil.
+ */
+const TROOP_ICON_MIN_RADIUS = 3.1;
+const TROOP_ICON_MAX_RADIUS = 4.4;
+const TROOP_ICON_SATURATION_COUNT = 120;
+
+function troopIconRadius(soldierCount: number): number {
+  const t = clamp01(Math.log10(1 + Math.max(0, soldierCount)) / Math.log10(1 + TROOP_ICON_SATURATION_COUNT));
+  return TROOP_ICON_MIN_RADIUS + (TROOP_ICON_MAX_RADIUS - TROOP_ICON_MIN_RADIUS) * t;
+}
 
 // docs/15-asker-hareketi-performans.md Bölüm 5.2 + kullanıcı talimatı (geniş bir
 // formasyon — yan yana 3-4 asker olabilir — ama aralarındaki [rank'lar arası] boşluk
@@ -297,6 +318,8 @@ function TroopMarkerImpl({
   }, [id, onRemove]);
 
   const initialVisibleCount = clamp(initialSoldierCount, 0, MAX_VISIBLE_TROOPS);
+  // Sevkiyatın büyüklüğü ikon adedinde tavan yaptığı için boyuta da yansıtılır — bkz. `troopIconRadius`.
+  const iconRadius = troopIconRadius(initialSoldierCount);
 
   return (
     <g pointerEvents="none">
@@ -312,8 +335,17 @@ function TroopMarkerImpl({
           }}
           cx={0}
           cy={0}
-          r={TROOP_ICON_RADIUS}
+          r={iconRadius}
           fill={color}
+          // docs/23-game-ui-refresh-v2.md Aşama 3: ince açık halka. İkon dolgusu
+          // owner'ın KOYU aksan tonu olduğu için (bkz. `color` prop'unun notu) bir
+          // sevkiyat koyu bir yüzeyin üstünden geçtiğinde — en belirgin olarak Fog of
+          // War'daki keşfedilmemiş bölgelerde (`UNEXPLORED_COLOR`, koyu) — zeminle
+          // birleşip görünmez oluyordu. Halka, ikonu geçtiği yüzeyden bağımsız olarak
+          // ayırır; kalınlık harita ölçeğinden bağımsız gerçek ekran pikselidir.
+          stroke="rgba(240,246,253,0.85)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
           opacity={i < initialVisibleCount ? 1 : 0}
         />
       ))}
