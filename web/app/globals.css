@@ -379,3 +379,43 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   docs/23-game-ui-refresh-v2.md Aşama 5 — cila taramasında bulunan, bileşenlerin
+   içine dağılmış sabit renkler buraya toplandı.
+
+   Aşama 1'in ilkesi "değerler tek yerde tanımlanır"dı; Aşama 2-4 boyunca birkaç
+   renk doğrudan JSX'e yazılmıştı. Bunlar tek tek anlamlı olsa da dağınık haldeyken
+   "bir sonraki kişi hangi beyazı kullanmalı" sorusunu cevapsız bırakıyorlardı.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Ele geçirme darbesi (bkz. game-capture-* keyframe'leri). */
+  --game-capture-wash: #f2f6fc;
+  --game-capture-edge: #ffffff;
+
+  /* Sürükleme oku. Halo, okun hem açık bölge dolgularının hem koyu harita
+     zemininin üstünde okunmasını sağlar; "invalid" tonu bilinçli olarak
+     akromatiktir (geçersizlik bir takım rengiyle anlatılmaz). */
+  --game-arrow-halo: rgba(6, 13, 24, 0.55);
+  --game-arrow-invalid: #dce5f2;
+
+  /* Harita üstündeki bölge adı: koyu mürekkep + açık halo. Halo sayesinde metin
+     hangi takım rengi üstüne düşerse düşsün okunur (ölçüm: mürekkep tek başına
+     bazı dolgularda AA eşiğini tutturamıyordu). */
+  --game-label-ink: #0e1726;
+  --game-label-halo: rgba(255, 255, 255, 0.72);
+
+  /* Asker ikonunun ayırıcı halkası — koyu Fog of War yüzeylerinde kaybolmasın diye. */
+  --game-troop-ring: rgba(240, 246, 253, 0.85);
+
+  /* HUD/panel içindeki küçük kimlik noktalarının konturu. */
+  --game-dot-ring: rgba(0, 0, 0, 0.35);
+
+  /* HUD'da kendi çipimin yüzeyi — "bu satır sensin" ayrımının taşıyıcısı. */
+  --game-chip-own: rgba(255, 255, 255, 0.09);
+
+  /* Bağlantı durumu göstergesi. Yeşil/amber paletin kendi tonlarıdır; kırmızı
+     bilinçli olarak paylaşılan `--destructive` token'ıdır (hata dili tek olsun). */
+  --game-status-ok: #5fd198;
+  --game-status-warn: #efc05a;
+}

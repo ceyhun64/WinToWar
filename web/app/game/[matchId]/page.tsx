@@ -398,7 +398,7 @@ function GameShell({ children }: { children: React.ReactNode }) {
 
 function CenteredMessage({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center [&_a]:min-h-11 [&_button]:min-h-11">
       {children}
     </div>
   );
@@ -453,9 +453,9 @@ function connectionLabel(status: string): string {
 function ConnectionDot({ status }: { status: string }) {
   const color =
     status === "connected"
-      ? "#5FD198"
+      ? "var(--game-status-ok)"
       : status === "disconnected"
         ? "var(--destructive)"
-        : "#EFC05A";
+        : "var(--game-status-warn)";
   return <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />;
 }

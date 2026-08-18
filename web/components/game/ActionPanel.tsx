@@ -122,7 +122,7 @@ function RegionDetails({
                     ownerId: neighborState.ownerId,
                     ownerSlot: neighborOwner?.slot ?? null,
                   }),
-                  boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
+                  boxShadow: "0 0 0 1px var(--game-dot-ring)",
                 }}
                 aria-hidden="true"
               />
@@ -168,7 +168,7 @@ function OwnerLine({
     <span className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
       <span
         className="size-2.5 shrink-0 rounded-full"
-        style={{ backgroundColor: color, boxShadow: "0 0 0 1px rgba(0,0,0,0.35)" }}
+        style={{ backgroundColor: color, boxShadow: "0 0 0 1px var(--game-dot-ring)" }}
         aria-hidden="true"
       />
       <span className="truncate">

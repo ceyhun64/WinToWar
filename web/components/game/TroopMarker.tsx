@@ -93,6 +93,22 @@ function backOut(t: number): number {
   return 1 + (c + 1) * shifted ** 3 + c * shifted ** 2;
 }
 
+/**
+ * docs/23-game-ui-refresh-v2.md Aşama 5 — `prefers-reduced-motion`.
+ *
+ * Bu bileşenin animasyonu imperatif bir requestAnimationFrame döngüsüdür; CSS
+ * media query'siyle susturulamaz, bu yüzden tercih JS tarafında okunur.
+ *
+ * Kaldırılan yalnızca ÖLÇEK OYUNLARI: çıkışdaki overshoot ("bounce") ve çarpışmada
+ * hayatta kalanlara uygulanan büyüyüp küçülen darbe. Askerlerin kaynaktan hedefe
+ * gerçekten YÜRÜMESİ korunur — o hareket dekorasyon değil, oyunun kendisidir
+ * (nereden nereye kaç asker gittiği başka hiçbir yerde yazmıyor); kaldırılsaydı
+ * hareket hassasiyeti olan bir oyuncu bilgiden mahrum kalırdı.
+ */
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 /** Grup genelinde geçerli, tüm hâlâ-canlı ikonları aynı anda etkileyen aşamalar. */
 type GroupPhase = { kind: "traveling" } | { kind: "arriving"; startedAt: number };
 
@@ -146,6 +162,8 @@ function TroopMarkerImpl({
 
   const phaseRef = useRef<GroupPhase>({ kind: "traveling" });
   const mountedAtRef = useRef(Date.now());
+  // Aşama 5: mount anında bir kez okunur — bkz. `prefersReducedMotion` üstündeki not.
+  const reducedMotionRef = useRef(prefersReducedMotion());
   const removedRef = useRef(false);
 
   // Bu andaki toplam hayatta kalan (görsel) ikon sayısı — başlangıçta gönderilen
@@ -249,7 +267,7 @@ function TroopMarkerImpl({
       let winnerBumpMul = 1;
       if (winnerBumpStartRef.current !== null) {
         const t = clamp01((now - winnerBumpStartRef.current) / CLASH_IMPACT_MS);
-        winnerBumpMul = 1 + Math.sin(t * Math.PI) * 0.28;
+        winnerBumpMul = reducedMotionRef.current ? 1 : 1 + Math.sin(t * Math.PI) * 0.28;
         if (t >= 1) {
           winnerBumpStartRef.current = null;
         }
@@ -300,7 +318,7 @@ function TroopMarkerImpl({
         const y = lerp(cfg.fromPoint.y, cfg.toPoint.y, travelProgress) + perpY * lateral;
 
         const popInT = clamp01(iconAge / POP_IN_MS);
-        const iconScale = backOut(popInT) * groupScaleMul * winnerBumpMul;
+        const iconScale = (reducedMotionRef.current ? popInT : backOut(popInT)) * groupScaleMul * winnerBumpMul;
         const iconOpacity = clamp01(iconAge / (POP_IN_MS * 0.6)) * groupOpacityMul;
 
         icon.setAttribute("transform", `translate(${x} ${y}) scale(${iconScale})`);
@@ -343,7 +361,7 @@ function TroopMarkerImpl({
           // War'daki keşfedilmemiş bölgelerde (`UNEXPLORED_COLOR`, koyu) — zeminle
           // birleşip görünmez oluyordu. Halka, ikonu geçtiği yüzeyden bağımsız olarak
           // ayırır; kalınlık harita ölçeğinden bağımsız gerçek ekran pikselidir.
-          stroke="rgba(240,246,253,0.85)"
+          stroke="var(--game-troop-ring)"
           strokeWidth={1}
           vectorEffect="non-scaling-stroke"
           opacity={i < initialVisibleCount ? 1 : 0}

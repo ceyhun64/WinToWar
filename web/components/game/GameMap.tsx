@@ -463,6 +463,12 @@ export function GameMap({
     <svg
       ref={svgRef}
       viewBox={`${VIEW_MIN_X} ${VIEW_MIN_Y} ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+      // Aşama 5: dikeyde ORTALAMAK yerine ÜSTE hizala (`YMin`). Harita ~kare
+      // olduğundan dikey boşluk yalnızca portre ekranlarda oluşur (masaüstünde ve
+      // yatayda yükseklik zaten kısıtlayıcıdır, hizalamanın etkisi yoktur). Portrede
+      // artan boşluğun altta toplanması, ActionPanel alttan açıldığında haritanın
+      // daha büyük bir kısmının görünür kalması demek — oynanabilirlik > simetri.
+      preserveAspectRatio="xMidYMin meet"
       className="block h-full w-full"
       role="img"
       aria-label="Lüksemburg haritası"
@@ -511,7 +517,7 @@ export function GameMap({
             <g key={flash.id}>
               <polygon
                 points={points}
-                fill="#F2F6FC"
+                fill="var(--game-capture-wash)"
                 style={{
                   opacity: 0,
                   animation: `game-capture-wash ${CAPTURE_FLASH_MS}ms var(--game-ease-out) forwards`,
@@ -520,7 +526,7 @@ export function GameMap({
               <polygon
                 points={points}
                 fill="none"
-                stroke="#FFFFFF"
+                stroke="var(--game-capture-edge)"
                 strokeWidth={4}
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
@@ -605,7 +611,7 @@ export function GameMap({
                   y1={arrow.lineStart.y}
                   x2={arrow.lineEnd.x}
                   y2={arrow.lineEnd.y}
-                  stroke="rgba(6,13,24,0.55)"
+                  stroke="var(--game-arrow-halo)"
                   strokeWidth={7.5}
                   strokeLinecap="round"
                 />
@@ -614,7 +620,7 @@ export function GameMap({
                   y1={arrow.lineStart.y}
                   x2={arrow.lineEnd.x}
                   y2={arrow.lineEnd.y}
-                  stroke={isValidDrop ? myArrowColor : "#DCE5F2"}
+                  stroke={isValidDrop ? myArrowColor : "var(--game-arrow-invalid)"}
                   strokeWidth={4}
                   strokeLinecap="round"
                   strokeDasharray={isValidDrop ? undefined : "10 8"}
@@ -622,7 +628,7 @@ export function GameMap({
                 <polygon
                   points={headPoints}
                   fill={isValidDrop ? myArrowColor : "none"}
-                  stroke={isValidDrop ? "rgba(6,13,24,0.55)" : "#DCE5F2"}
+                  stroke={isValidDrop ? "var(--game-arrow-halo)" : "var(--game-arrow-invalid)"}
                   strokeWidth={isValidDrop ? 1.5 : 3}
                   strokeLinejoin="round"
                 />

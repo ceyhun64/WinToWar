@@ -327,11 +327,12 @@ function RegionLabelImpl({ region, anchor, regionState, isMine, accentColor, arr
         textAnchor="middle"
         fontSize={NAME_FONT_SIZE}
         fontWeight={isMine ? 600 : 500}
-        fill="#0E1726"
-        stroke="rgba(255,255,255,0.72)"
         strokeWidth={2.6}
         paintOrder="stroke"
         strokeLinejoin="round"
+        // Token'lar `style` üzerinden — bkz. yukarıdaki rozet notundaki gerekçe
+        // (`var()` bir SVG presentation attribute'unda güvenilir çözülmez).
+        style={{ fill: "var(--game-label-ink)", stroke: "var(--game-label-halo)" }}
       >
         {region.name}
       </text>

@@ -95,7 +95,7 @@ function PlayerChip({
     <div
       className="flex shrink-0 items-center gap-1.5 rounded-(--game-radius-pill) py-1 pr-2.5 pl-1.5"
       style={{
-        background: isMe ? "rgba(255,255,255,0.09)" : "transparent",
+        background: isMe ? "var(--game-chip-own)" : "transparent",
         boxShadow: isMe ? "inset 0 0 0 1px var(--game-panel-border-strong)" : undefined,
         opacity: player.isEliminated ? 0.45 : 1,
       }}
@@ -107,7 +107,7 @@ function PlayerChip({
           backgroundColor: color,
           // Kimlik noktası koyu HUD zeminine karşı da ayrışsın diye ince bir halka —
           // paletteki en koyu tonda bile nokta yutulmaz.
-          boxShadow: "0 0 0 1px rgba(0,0,0,0.35)",
+          boxShadow: "0 0 0 1px var(--game-dot-ring)",
         }}
       />
       <span
@@ -121,18 +121,18 @@ function PlayerChip({
           hâlâ açık ("BOT"), kriptik bir sembol değil. */}
       {player.isBot ? (
         <span
-          className="rounded-(--game-radius-xs) px-1 text-[0.6rem] leading-[1.35] font-semibold tracking-wide"
+          className="rounded-(--game-radius-xs) px-1 text-[0.65rem] leading-[1.35] font-semibold tracking-wide"
           style={{ background: "var(--game-panel-border-strong)", color: "var(--game-text-muted)" }}
         >
           BOT
         </span>
       ) : null}
       {player.isEliminated ? (
-        <span className="text-[0.6rem] leading-none" style={{ color: "var(--game-text-muted)" }}>
+        <span className="text-[0.65rem] leading-none" style={{ color: "var(--game-text-muted)" }}>
           elendi
         </span>
       ) : !player.isConnected && !player.isBot ? (
-        <span className="text-[0.6rem] leading-none" style={{ color: "var(--game-text-muted)" }}>
+        <span className="text-[0.65rem] leading-none" style={{ color: "var(--game-text-muted)" }}>
           bağlı değil
         </span>
       ) : null}
