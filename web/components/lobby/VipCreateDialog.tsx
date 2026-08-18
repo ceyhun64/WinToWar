@@ -123,7 +123,12 @@ export function VipCreateDialog({ open, onOpenChange }: { open: boolean; onOpenC
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-card text-card-foreground backdrop-blur-md">
+      {/* docs/24-responsive-small-screens.md Bölüm 5: `85vh` → `85dvh`. `vh`
+          mobilde adres çubuğu AÇIKKEN bile tam viewport yüksekliğini baz alır,
+          yani dialog görünür alandan taşıyor ve alttaki "Oda Kur" butonu ekran
+          dışında kalıyordu. `dvh` dinamik yüksekliği kullanır — projede zaten
+          benimsenmiş birim (bkz. docs/13-scroll-lock.md Bölüm 2.1, ActionPanel). */}
+      <DialogContent className="max-h-[85dvh] overflow-y-auto rounded-2xl border border-border bg-card text-card-foreground backdrop-blur-md">
         <DialogHeader>
           <DialogTitle>VIP Oda Kur</DialogTitle>
           <DialogDescription>Kuralları sen belirle, kurucusu sen ol.</DialogDescription>

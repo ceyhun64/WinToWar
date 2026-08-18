@@ -60,7 +60,7 @@ export default function SssPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       <PageHero icon={HelpCircle} title="Sıkça Sorulan Sorular" />
-        <CardContent className="flex h-full flex-col gap-6 overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-(--gutter-6)">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {FAQ_ITEMS.map((item) => (
               <GameCard key={item.question}>
@@ -79,7 +79,7 @@ export default function SssPage() {
               Destek ile iletişime geç
             </Link>
           </p>
-        </CardContent>
+        </div>
     </div>
   );
 }

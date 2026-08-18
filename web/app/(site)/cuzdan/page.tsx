@@ -207,13 +207,13 @@ function CuzdanPageContent() {
                   {pendingWithdrawals.map((w) => (
                     <div
                       key={w.id}
-                      className="flex items-center justify-between text-sm"
+                      className="flex items-center justify-between gap-3 text-sm"
                     >
-                      <span className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="size-3.5" aria-hidden="true" />
-                        {new Date(w.createdAt).toLocaleDateString("tr-TR")}
+                      <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                        <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{new Date(w.createdAt).toLocaleDateString("tr-TR")}</span>
                       </span>
-                      <span className="flex items-center gap-3 tabular-nums">
+                      <span className="flex shrink-0 items-center gap-3 tabular-nums">
                         ${w.amountUsd}
                         <Badge variant="outline">
                           {WITHDRAWAL_STATUS_LABEL[w.status] ?? w.status}

@@ -25,6 +25,14 @@ interface RegionShapeProps {
   onDragStart: (e: React.PointerEvent) => void;
   onDragMove: (e: React.PointerEvent) => void;
   onDragEnd: (e: React.PointerEvent) => void;
+  /**
+   * docs/24-responsive-small-screens.md Problem B: `pointercancel` bir BIRAKMA
+   * DEGILDIR — tarayici jesti sahiplendiginde (scroll/pan/zoom) gelir. Eskiden
+   * `onDragEnd` ile ayni handler'a bagliydi ve o handler kosulsuz saldiri
+   * gonderiyordu; yani oyuncunun hic birakmadigi bir sevkiyat tetiklenebiliyordu.
+   * Iptalin kendi yolu var: saldiri gondermeden yalnizca state'i temizler.
+   */
+  onDragCancel: (e: React.PointerEvent) => void;
 }
 
 /**
@@ -70,6 +78,7 @@ function RegionShapeImpl({
   onDragStart,
   onDragMove,
   onDragEnd,
+  onDragCancel,
 }: RegionShapeProps) {
   const pointsAttr = region.geometry.points.map(([x, y]) => `${x},${y}`).join(" ");
 
@@ -94,13 +103,23 @@ function RegionShapeImpl({
       onPointerDown={draggable ? onDragStart : undefined}
       onPointerMove={isDragSource ? onDragMove : undefined}
       onPointerUp={isDragSource ? onDragEnd : undefined}
-      onPointerCancel={isDragSource ? onDragEnd : undefined}
+      onPointerCancel={isDragSource ? onDragCancel : undefined}
       className={
         // docs/04-style.md Bölüm 13: odak göstergesi hiçbir yerde tamamen kaldırılmaz —
         // fare tıklamasında varsayılan tarayıcı halkası bastırılır, ama klavye ile
         // (Tab) gelen odakta focus-visible ile görünür bir gösterge kalır.
+        //
+        // docs/24-responsive-small-screens.md Problem B: buradaki `touch-none`
+        // KALDIRILDI. `touch-action`, Chromium ve WebKit'te SVG alt elemanlarinda
+        // (`<g>`, `<polygon>`) uygulanmaz — hit-test edilen SVG layout nesnesi bu
+        // degeri tasimaz. Sinif kodda "var" gorundugu halde etkisizdi ve harita
+        // yuzeyinin gercek touch-action'i `auto` kaliyordu; tarayici tek parmak
+        // hareketini pan adayi sayip pointer akisini `pointercancel` ile kesiyordu
+        // (fare bu yoldan hic gecmedigi icin sorun yalnizca dokunmatikte gorunurdu).
+        // Kural artik HTML tarafindaki harita yuzeyinde: `[data-game-map-surface]`
+        // (bkz. app/globals.css + app/game/[matchId]/page.tsx).
         (draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer") +
-        " touch-none outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        " outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       }
     >
       <title>{region.name}</title>

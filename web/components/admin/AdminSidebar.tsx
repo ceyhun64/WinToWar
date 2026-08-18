@@ -17,12 +17,12 @@ export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex w-48 shrink-0 flex-col gap-1 border-r border-border bg-card p-3">
+    <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-card p-3 md:w-48 md:flex-col md:overflow-x-visible md:border-r md:border-b-0">
       {LINKS.map((link) => (
         <Link
           key={link.href}
           href={link.href}
-          className={`rounded-md px-3 py-2 text-sm ${
+          className={`shrink-0 rounded-md px-3 py-2 text-sm whitespace-nowrap ${
             pathname === link.href ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted"
           }`}
         >
@@ -30,7 +30,7 @@ export function AdminSidebar() {
         </Link>
       ))}
       <button
-        className="mt-auto rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted"
+        className="ml-auto shrink-0 rounded-md px-3 py-2 text-left text-sm whitespace-nowrap text-muted-foreground hover:bg-muted md:mt-auto md:ml-0"
         onClick={() => {
           signOut();
           window.location.reload();

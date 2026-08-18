@@ -60,9 +60,16 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
   return (
     <header className="w-full min-w-0 px-4 py-4 sm:px-6 lg:px-10">
       <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between rounded-2xl border border-transparent bg-transparent px-4 py-2.5 sm:px-5">
+        {/* docs/24-responsive-small-screens.md Bölüm 2: `min-w-0` olmadan bir flex
+            çocuğunun varsayılan `min-width: auto` değeri onu içeriğinden daha dar
+            olmaya bırakmaz; "WinToWar" tek kelime olduğu için satır 320–375px'te
+            kapsayıcıyı aşıyor ve `body`'nin `overflow-hidden`'ı yüzünden yatay
+            scrollbar bile üretmeden sessizce kırpılıyordu. Padding/tipografi
+            değişmedi — yalnızca daralma izni verildi, yani 390px ve üzerinde
+            (içerik zaten sığdığı için) görünüm birebir aynı kalır. */}
         <Link
           href="/"
-          className="flex items-center gap-2 text-lg font-bold tracking-tight text-white"
+          className="flex min-w-0 items-center gap-2 text-lg font-bold tracking-tight text-white"
         >
           <Image
             src="/logo/logo-mark.png"
@@ -72,11 +79,11 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
             className="h-10 w-auto shrink-0 object-contain"
             priority
           />
-          WinToWar
+          <span className="truncate">WinToWar</span>
         </Link>
         {!minimal ? (
-          <div className="flex items-center gap-4">
-            <nav className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-4">
+            <nav className="flex min-w-0 flex-wrap items-center gap-4 text-sm text-muted-foreground">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -89,10 +96,12 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
             </nav>
 
             {displayName ? (
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                {/* Bakiye `shrink-0`: tutar kısalırsa okunamaz hale gelir —
+                    daralma payı kullanıcı adına bırakılır (aşağıdaki truncate). */}
                 <Link
                   href="/cuzdan"
-                  className="rounded-2xl px-2.5 py-1 text-sm font-medium tabular-nums hover:bg-muted text-yellow-500"
+                  className="shrink-0 rounded-2xl px-2.5 py-1 text-sm font-medium tabular-nums hover:bg-muted text-yellow-500"
                 >
                   {balanceUsd !== null ? (
                     `$${balanceUsd}`
@@ -101,7 +110,7 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
                   )}
                 </Link>
                 <DropdownMenu>
-                  <DropdownMenuTrigger className="rounded-2xl px-2.5 py-1 text-sm font-medium hover:bg-muted cursor-pointer">
+                  <DropdownMenuTrigger className="min-w-0 truncate rounded-2xl px-2.5 py-1 text-sm font-medium hover:bg-muted cursor-pointer">
                     {displayName}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -124,7 +133,7 @@ export function Header({ minimal = false }: { minimal?: boolean }) {
                 </DropdownMenu>
               </div>
             ) : (
-              <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-3">
                 <Link
                   href="/giris"
                   className={buttonVariants({ variant: "ghost", size: "sm" })}

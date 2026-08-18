@@ -48,7 +48,7 @@ export default function GirisPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-16">
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-(--gutter-16)">
       <PageHero icon={LogIn} title="Giriş" subtitle="Devam etmek için e-posta ve şifrenizi girin." />
 
       <GameCard>

@@ -194,18 +194,15 @@ export default function GamePage({ params }: GamePageProps) {
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             {/* Dokunma hedefi: buton görsel olarak 28px (`icon-sm`, paylaşılan
                 tasarım sisteminin ölçeği — `components/ui/button.tsx` bu görevde
-                değiştirilmez). Görünümü bozmadan hedefi 44px'e çıkarmak için
-                görünmez bir pseudo-eleman kullanılıyor; bu, ekranda sürekli duran
-                tek küçük kontrol olduğu için önemli. */}
+                değiştirilmez). Görünümü bozmadan hedefi 44px'e çıkaran görünmez
+                pseudo-eleman deseni, docs/24-responsive-small-screens.md Bölüm 2
+                ile app/globals.css'e taşındı ve TÜM butonlara genelleştirildi —
+                buradaki yerel kopya kaldırıldı (aynı kural iki yerde tanımlı
+                kalmasın, bkz. 06-coding-standards.md "Kod Tekrarını Önleme").
+                Ayrıca eski kopya sabit `-inset-2` veriyordu; global kural hedefi
+                butonun gerçek boyutuna göre 44px'e tamamlar. */}
             <SheetTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label="Menü"
-                  className="relative after:absolute after:-inset-2 after:content-['']"
-                />
-              }
+              render={<Button variant="outline" size="icon-sm" aria-label="Menü" />}
             >
               <MenuIcon className="size-4" aria-hidden="true" />
             </SheetTrigger>
@@ -249,7 +246,11 @@ export default function GamePage({ params }: GamePageProps) {
             bazı tarayıcılarda 0'a çözülür. Kesin kenar konumları (inset) bu belirsizliği
             tamamen ortadan kaldırır — harita ekranın en önemli öğesi, yükseklik hesabının
             tarayıcıya göre değişmesini göze alamayız. */}
-        <div className="absolute inset-2">
+        {/* `data-game-map-surface`: haritanın girdi kuralları (touch-action,
+            metin seçimi, uzun basma menüsü) burada — SVG'nin İÇİNDE değil, çünkü
+            `touch-action` SVG alt elemanlarında uygulanmaz. Ayrıntılı gerekçe
+            app/globals.css'teki aynı adlı blokta. */}
+        <div data-game-map-surface="" className="absolute inset-2">
           <GameMap
             map={map}
             state={state}
@@ -404,9 +405,15 @@ export default function GamePage({ params }: GamePageProps) {
       />
 
       {/* z-60: Sheet (ActionPanel/menü) z-50 kullanıyor — hata mesajı bir sheet açıkken
-          de görünmeli, yoksa "asker gönderilemedi" gibi bir uyarı panelin altında kalırdı. */}
+          de görünmeli, yoksa "asker gönderilemedi" gibi bir uyarı panelin altında kalırdı.
+
+          docs/24-responsive-small-screens.md Bölüm 3 — `bottom`: `GameShell`'in
+          `env(safe-area-inset-*)` padding'i `fixed` konumlandırmayı etkilemez (fixed
+          her zaman viewport'a göre konumlanır), bu yüzden gesture bar'lı telefonlarda
+          hata mesajı çubuğun altında kalıyordu. `max()` ile inset bildirmeyen
+          cihazlarda mevcut 16px birebir korunur. */}
       {store.error ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-60 flex justify-center px-4">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-60 flex justify-center px-4">
           {/* Zemin bilinçli olarak `--game-panel-solid`, `bg-popover` değil: ölçümde
               `--destructive` (#f2495c) popover zemininde 4.48:1 veriyor — AA eşiğinin
               (4.5) kıl payı altında. Daha koyu oyun yüzeyinde aynı kırmızı 4.61:1'e

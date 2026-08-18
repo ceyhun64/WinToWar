@@ -36,9 +36,16 @@ export function ActionPanel({ map, state, myPlayerId, selectedRegionId, gameConf
 
   return (
     <Sheet open={!!selectedRegionId} onOpenChange={(open) => !open && onClose()}>
+      {/* docs/24-responsive-small-screens.md Bölüm 3: Sheet bir portal ile doğrudan
+          `body`'ye render edilir, yani `GameShell`'in `env(safe-area-inset-*)`
+          padding'i bu panele UYGULANMAZ. `side="bottom"` paneli ekranın en altına
+          yapıştığı için çentikli/gesture-bar'lı telefonlarda alt içerik (komşu
+          listesinin son satırı, ipucu metni) home indicator'ın altında kalıyordu.
+          `max()` sayesinde safe-area bildirmeyen cihazlarda mevcut 24px'lik padding
+          birebir korunur — yalnızca gerçekten inset bildiren cihazlarda büyür. */}
       <SheetContent
         side="bottom"
-        className="mx-auto flex max-h-[52dvh] w-full max-w-xl flex-col gap-4 overflow-y-auto border-x px-4 pt-6 pb-6"
+        className="mx-auto flex max-h-[52dvh] w-full max-w-xl flex-col gap-4 overflow-y-auto border-x px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
       >
         {region && regionState ? (
           <RegionDetails
@@ -127,7 +134,14 @@ function RegionDetails({
                 aria-hidden="true"
               />
               <span className="min-w-0 flex-1 truncate">{neighborRegion.name}</span>
-              <span className="shrink-0 truncate text-xs text-muted-foreground">
+              {/* docs/24-responsive-small-screens.md Bölüm 3: burada `shrink-0` ile
+                  `truncate` birlikte veriliyordu — `shrink-0` daralmayı engellediği
+                  için `truncate` hiç devreye giremiyor, uzun bir oyuncu adı satırı
+                  genişletiyor ve tüm daralmayı SOLDAKİ bölge adı üstleniyordu (320px'te
+                  bölge adı sıfıra iniyordu). `shrink-0` kaldırıldı: bölge adının
+                  `flex-1` esnek tabanı 0 olduğu için daralma payı artık oyuncu adına
+                  düşer, bölge adı korunur. */}
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
                 {neighborState.ownerId === myPlayerId ? "Sen" : (neighborOwner?.name ?? "Sahipsiz")}
               </span>
               <span className="w-10 shrink-0 text-right font-medium tabular-nums">

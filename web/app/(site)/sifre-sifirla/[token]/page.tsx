@@ -67,7 +67,7 @@ export default function SifreSifirlaPage({ params }: SifreSifirlaPageProps) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-16">
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-(--gutter-16)">
       <PageHero icon={KeyRound} title="Yeni Şifre Belirle" subtitle="Hesabınız için yeni bir şifre girin." />
 
       <GameCard>

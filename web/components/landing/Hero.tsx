@@ -39,7 +39,7 @@ export function Hero() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
-      className="flex min-w-0 flex-col gap-6 text-left"
+      className="flex min-w-0 flex-col gap-(--landing-gap) text-left"
     >
       <h1
         className={`${displayFont.className} relative text-[clamp(2.25rem,6vw,4rem)] font-bold uppercase leading-[1.02] tracking-tight text-white`}
@@ -66,13 +66,13 @@ export function Hero() {
       <div className="flex flex-wrap items-center gap-3 justify-start">
         <LandingCta
           size="lg"
-          className="group h-16 rounded-xl bg-[#38BDF8] px-10 text-lg font-bold text-[#070B14] shadow-[0_0_32px_-6px_rgba(56,189,248,0.75)] ring-2 ring-[#F5B942]/0 transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#38BDF8]/90 hover:shadow-[0_0_40px_-2px_rgba(56,189,248,0.9)] hover:ring-[#F5B942]/60 active:translate-y-0"
+          className="group h-(--landing-cta-h) rounded-xl bg-[#38BDF8] px-10 text-lg font-bold text-[#070B14] shadow-[0_0_32px_-6px_rgba(56,189,248,0.75)] ring-2 ring-[#F5B942]/0 transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#38BDF8]/90 hover:shadow-[0_0_40px_-2px_rgba(56,189,248,0.9)] hover:ring-[#F5B942]/60 active:translate-y-0"
         />
         <Button
           className={buttonVariants({
             variant: "white",
             size: "lg",
-            className: "h-16 gap-2 rounded-xl border-white/15 px-7 text-base font-semibold text-black",
+            className: "h-(--landing-cta-h) gap-2 rounded-xl border-white/15 px-7 text-base font-semibold text-black",
           })}
           onClick={() => window.open("/lobi", "_blank")}
         >

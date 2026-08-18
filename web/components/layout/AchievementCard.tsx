@@ -24,8 +24,10 @@ export function AchievementCard({
       >
         <Icon className="size-5" aria-hidden="true" />
       </span>
-      <div className="flex flex-col">
-        <span className="text-sm font-semibold">{title}</span>
+      {/* docs/24-responsive-small-screens.md Bölüm 7: StatCard ile aynı daralma
+          düzeltmesi — `min-w-0` olmadan uzun başlık/açıklama kartı aşıyordu. */}
+      <div className="flex min-w-0 flex-col">
+        <span className="truncate text-sm font-semibold">{title}</span>
         <span className="text-xs text-muted-foreground">{description}</span>
       </div>
     </GameCard>

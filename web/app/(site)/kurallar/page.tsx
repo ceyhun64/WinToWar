@@ -12,7 +12,6 @@ import {
 import { PageHero } from "@/components/layout/PageHero";
 import { IllustrationPanel } from "@/components/layout/IllustrationPanel";
 import { GameCard } from "@/components/layout/GameCard";
-import { CardContent } from "@/components/ui/card";
 import { canonicalFor } from "@/lib/metadata";
 
 export const metadata: Metadata = {
@@ -80,7 +79,7 @@ export default function KurallarPage() {
         subtitle="Gerçek zamanlı, bölge ele geçirme temelli çok oyunculu strateji oyunu."
       />
 
-        <CardContent className="h-full overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto px-(--gutter-6)">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {RULE_SECTIONS.map((section) => (
               <IllustrationPanel
@@ -100,7 +99,7 @@ export default function KurallarPage() {
               </IllustrationPanel>
             ))}
           </div>
-        </CardContent>
+        </div>
     </div>
   );
 }

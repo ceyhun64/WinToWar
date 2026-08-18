@@ -27,7 +27,20 @@ export function Landing() {
       <div className="relative z-10 flex h-full min-w-0 flex-col">
         <Navbar />
 
-        <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6 lg:px-10">
+        {/* docs/24-responsive-small-screens.md Bölüm 4 — `overflow-hidden` →
+            `overflow-y-auto`. Ölçüm: 320×568'de Hero yığını (başlık + paragraf +
+            iki CTA + adım şeridi + 2×2 istatistik kartı) ~527px yer istiyor, oysa
+            navbar ve footer düşüldükten sonra ~386px kalıyor. Akışkan ölçek
+            (`--landing-gap`/`--landing-cta-h`, bkz. globals.css) bu açığı 375px'e
+            kadar kapatıyor; daha dar ekranlarda içerik yine de taşabiliyor ve eski
+            `overflow-hidden` + `justify-center` bileşimi taşan kısmı HEM ÜSTTEN
+            HEM ALTTAN kırpıp erişilemez bırakıyordu (metin/CTA silinmiş gibi
+            görünüyordu). docs/13-scroll-lock.md Bölüm 1.3'ün öngördüğü "son çare iç
+            scroll" burada yalnızca bir güvenlik ağıdır: 390px ve üzerinde içerik
+            zaten sığdığı için scroll HİÇ devreye girmez, görünüm birebir aynıdır.
+            `html`/`body` scroll kilidi (aynı dosyanın 🔒 asıl talimatı) bozulmaz —
+            kaydırma bu `main`'in içinde kalır. */}
+        <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-y-auto px-4 sm:px-6 lg:px-10">
           <div className="mx-auto grid w-full min-w-0 max-w-7xl items-center gap-8 lg:grid-cols-[1.1fr_1fr] lg:gap-12">
             <Hero />
             <div className="relative hidden h-[min(50vh,440px)] lg:block">

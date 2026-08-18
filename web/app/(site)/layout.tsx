@@ -72,7 +72,11 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
 
   if (CHROMELESS_PATHS.includes(pathname)) {
-    return <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</main>;
+    // docs/24-responsive-small-screens.md Bölüm 4: Landing'in kendi `main`'i ile
+    // bu dış kap ÜST ÜSTE `overflow-hidden` veriyordu; içerik viewport'a
+    // sığmadığında taşan kısım iki kez kırpılıp tamamen erişilemez kalıyordu.
+    // Gerekçe ve ölçüm için bkz. components/landing/Landing.tsx'teki not.
+    return <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">{children}</main>;
   }
 
   const minimal = MINIMAL_HEADER_PATHS.includes(pathname);

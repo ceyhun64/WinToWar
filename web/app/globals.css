@@ -180,6 +180,84 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   docs/24-responsive-small-screens.md Bölüm 2 — akışkan boşluk ölçeği.
+
+   PROBLEM: Görev tanımı Bölüm 1'in regresyon kuralı 390–430px'i referans tasarım
+   ilan ediyor, yani orada HİÇBİR şey değişemez. Ama Tailwind'in en küçük
+   breakpoint'i `sm:` = 640px; `px-4 sm:px-8` gibi bir yama 390–430px'i de
+   "küçük" sayıp referans tasarımı bozardı. Özel bir breakpoint eklemek de
+   docs/04-style.md Bölüm 11'in 🛠️ "standart Tailwind breakpoint'leri kullanılır,
+   özel breakpoint eklenmez" kararıyla çelişirdi.
+
+   ÇÖZÜM: breakpoint yerine akışkan (`clamp`) ölçek. Formül 390px'te tam olarak
+   mevcut değeri üretir ve yalnızca ondan DAR ekranlarda küçülür:
+
+     clamp(min, calc(<mevcut> + (100vw - 390px) * k), <mevcut>)
+
+   Ölçülen çıktı (px):
+     --gutter-8   320:18.0  360:26.0  375:29.0  390:32.0  430:32.0  768:32.0
+     --gutter-16  320:39.5  360:53.5  375:58.8  390:64.0  430:64.0  768:64.0
+
+   Yani 390px ve üzeri birebir korunur (üst sınır devrede), 320–375px yumuşakça
+   daralır, alt sınır içeriğin kenara yapışmasını engeller.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Tailwind `p-8`/`px-8` (2rem) karşılığı — sayfa kenar boşluğu. */
+  --gutter-8: clamp(1rem, calc(2rem + (100vw - 390px) * 0.2), 2rem);
+  /* Tailwind `py-16` (4rem) karşılığı — dikey ortalanan kısa form sayfaları. */
+  --gutter-16: clamp(1.5rem, calc(4rem + (100vw - 390px) * 0.35), 4rem);
+  /* Tailwind `px-6` (1.5rem) karşılığı — kart/panel iç boşluğu. */
+  --gutter-6: clamp(0.75rem, calc(1.5rem + (100vw - 390px) * 0.15), 1.5rem);
+  /* Landing'in dikey ritmi (`gap-6` = 1.5rem karşılığı). */
+  --landing-gap: clamp(0.75rem, calc(1.5rem + (100vw - 390px) * 0.15), 1.5rem);
+  /* Landing CTA yüksekliği (`h-16` = 4rem karşılığı). Alt sınır 2.75rem = 44px,
+     yani dokunma hedefi hiçbir genişlikte eşiğin altına inmez. */
+  --landing-cta-h: clamp(2.75rem, calc(4rem + (100vw - 390px) * 0.25), 4rem);
+  /* Landing istatistik kartlarındaki ikon kutusu (`size-10` = 2.5rem karşılığı). */
+  --landing-stat-icon: clamp(2rem, calc(2.5rem + (100vw - 390px) * 0.12), 2.5rem);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   docs/24-responsive-small-screens.md Bölüm 2 — dokunma hedefi tabanı.
+
+   Paylaşılan buton ölçeği (`components/ui/button.tsx`) en fazla 36px yükseklik
+   veriyor (default 32, sm 28, icon 32) — hepsi 44px eşiğinin altında. O dosya bu
+   görevde DEĞİŞTİRİLMEZ (görev tanımı Bölüm 6) ve butonların görünür boyutunu
+   büyütmek 390–430px referans tasarımını bozardı (Bölüm 1 regresyon kuralı).
+
+   🛠️ Bu yüzden hedef, görünmez bir pseudo-eleman ile büyütülür: görünen kutu
+   birebir aynı kalır, yalnızca vurulabilir alan 44×44'e çıkar. Bu desen projede
+   zaten kanıtlanmıştı (oyun ekranındaki menü butonu), burada tek yerden
+   genelleştiriliyor.
+
+   - `@media (pointer: coarse)`: yalnızca dokunmatik girdide devreye girer; fare
+     ile gelen masaüstü davranışı (hover alanı dahil) hiç değişmez.
+   - `width/height: max(100%, 44px)`: geniş metin butonlarında yatayda HİÇ
+     büyüme olmaz (yan yana butonların hedefleri birbirine girmesin diye);
+     yalnızca 44px'den küçük kenarlar tamamlanır.
+   - `@layer base`: utility'ler bu katmanı ezer, yani `absolute` konumlandırılmış
+     butonlar (ör. sheet kapatma butonu) ve kendi `after:*` desenini taşıyan
+     call-site'lar bozulmaz.
+   ───────────────────────────────────────────────────────────────────────────── */
+@layer base {
+  @media (pointer: coarse) {
+    [data-slot="button"] {
+      position: relative;
+    }
+
+    [data-slot="button"]::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      translate: -50% -50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+    }
+  }
+}
+
 /* Kullanıcı talimatı: scrollbar arka planı transparan, buton (thumb) lacivert.
    Kart içi (docs/13-scroll-lock.md) scroll alanları dahil tüm sayfada geçerli. */
 * {
@@ -418,4 +496,35 @@
      bilinçli olarak paylaşılan `--destructive` token'ıdır (hata dili tek olsun). */
   --game-status-ok: #5fd198;
   --game-status-warn: #efc05a;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   docs/24-responsive-small-screens.md Problem B — harita etkileşim yüzeyi.
+
+   NEDEN BURADA VE NEDEN BİR SVG SINIFI DEĞİL: `touch-action`, Chromium ve
+   WebKit'te SVG alt elemanlarında (`<g>`, `<polygon>`) uygulanmaz — hit-test
+   edilen SVG layout nesnesi bu değeri taşımaz. Önceki uygulama `touch-none`
+   sınıfını RegionNode'daki `<g>`'ye veriyordu; kodda "var" görünüyordu ama
+   dokunmatik cihazda hiçbir etkisi yoktu ve harita yüzeyinin gerçek touch-action
+   değeri `auto` kalıyordu. Tarayıcı da tek parmak hareketini pan adayı sayıp
+   pointer akışını `pointercancel` ile kesiyordu — sürükleyerek asker göndermenin
+   telefonda çalışmamasının kök nedeni buydu. Kural bu yüzden SVG'nin HTML
+   sarmalayıcısına (bir CSS kutusu üreten ilk ata) verilir.
+
+   KAPSAM BİLİNÇLİ OLARAK DAR: yalnızca `data-game-map-surface` taşıyan eleman.
+   Sayfa geneline, `html`/`body`'ye veya kaydırılması gereken kaplara (ör.
+   Hud'un yatay oyuncu şeridi) verilmez — bu, docs/13-scroll-lock.md v2
+   kararlarını bozmaz, onların dışında kalan ayrı bir yüzeyi tanımlar.
+   Salt-okunur harita gösterimleri (ör. /mac/[matchId] maç özeti) bu attribute'u
+   TAŞIMAZ, dolayısıyla o sayfada parmakla sayfa kaydırma çalışmaya devam eder.
+
+   `user-select`/`-webkit-touch-callout`: harita gerçek `<text>` düğümleri
+   içeriyor (bölge adı + asker sayısı); bunlar olmadan iOS'ta sürükleme metin
+   seçimine düşüyor ve uzun basmada callout menüsü açılıyordu.
+   ───────────────────────────────────────────────────────────────────────────── */
+[data-game-map-surface] {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }

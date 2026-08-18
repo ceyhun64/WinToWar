@@ -168,7 +168,26 @@ export function GameMap({
   const dragStartClientRef = useRef<{ x: number; y: number } | null>(null);
   const hasDraggedRef = useRef(false);
   const suppressClickRef = useRef(false);
-  const CLICK_VS_DRAG_THRESHOLD_PX = 4;
+  /**
+   * docs/24-responsive-small-screens.md Problem B (madde 8) — aktif sürüklemenin
+   * pointer kimliği. Eskiden takip edilmiyordu: ikinci bir parmak başka bir kendi
+   * bölgesine dokununca `dragFromRegionId` üzerine yazılıyor, ilk parmağın
+   * pointerup'ı artık başka bir elemana düşüyor ve state makinesi tutarsızlaşıyordu.
+   * Artık sürüklemeyi yalnızca birincil pointer başlatır ve yalnızca onu başlatan
+   * pointer ilerletebilir/bitirebilir.
+   */
+  const activePointerIdRef = useRef<number | null>(null);
+  /**
+   * docs/24-responsive-small-screens.md Problem B (madde 7) — tap/drag ayrımı.
+   * Eski değer 4px idi: parmak sabit durmadığı için bir dokunuş kolayca "sürükleme"
+   * sayılıyordu. 10px, dokunmatik arayüzlerde yerleşik "slop" aralığıdır.
+   *
+   * ⚠️ Bu eşik artık yalnızca sahte click'i bastırmakla kalmaz, saldırının
+   * gönderilip gönderilmeyeceğini de belirler (bkz. handleDragEnd) — eskiden
+   * saldırı hiçbir eşiğe bağlı değildi, yani eşik altındaki bir parmak titremesi
+   * bile geri alınamaz bir sevkiyat başlatabiliyordu.
+   */
+  const CLICK_VS_DRAG_THRESHOLD_PX = 10;
 
   const slotByPlayerId = useMemo(() => {
     const result = new Map<string, number>();
@@ -358,14 +377,40 @@ export function GameMap({
     return null;
   }
 
+  /**
+   * Sürükleme sahipliğini bırakır. Tarayıcı pointerup/pointercancel'da capture'ı
+   * zaten örtük olarak serbest bırakır, ama bunu açıkça yapmak (ve önce
+   * `hasPointerCapture` ile doğrulamak) elemanın o sırada DOM'dan kalkmış olduğu
+   * durumda `NotFoundError` fırlatılmasını da önler.
+   */
+  function releaseDragCapture(e: React.PointerEvent) {
+    const target = e.currentTarget;
+    if (target.hasPointerCapture(e.pointerId)) {
+      target.releasePointerCapture(e.pointerId);
+    }
+  }
+
+  /** Sürükleme state'ini sıfırlar — hem normal bitiş hem iptal bu yoldan geçer. */
+  function resetDragState() {
+    activePointerIdRef.current = null;
+    dragStartClientRef.current = null;
+    setDragFromRegionId(null);
+    setDragPointerSvg(null);
+    setDragHoverTargetId(null);
+  }
+
   function handleDragStart(regionId: string) {
     return (e: React.PointerEvent) => {
+      // Yalnızca birincil pointer sürükleme başlatır; zaten süren bir sürükleme
+      // varsa ikinci bir parmak onu devralamaz (bkz. activePointerIdRef notu).
+      if (!e.isPrimary || activePointerIdRef.current !== null) return;
       const regionState = regionStateById.get(regionId);
       const isMine = regionState?.ownerId === myPlayerId;
       if (state.status !== "Playing" || !isMine || (regionState?.soldierCount ?? 0) <= MIN_GARRISON_PER_SEND) {
         return;
       }
       e.currentTarget.setPointerCapture(e.pointerId);
+      activePointerIdRef.current = e.pointerId;
       setDragFromRegionId(regionId);
       dragStartClientRef.current = { x: e.clientX, y: e.clientY };
       hasDraggedRef.current = false;
@@ -376,7 +421,7 @@ export function GameMap({
   }
 
   function handleDragMove(e: React.PointerEvent) {
-    if (!dragFromRegionId) return;
+    if (!dragFromRegionId || e.pointerId !== activePointerIdRef.current) return;
     const point = toSvgPoint(e.clientX, e.clientY);
     if (!point) return;
     setDragPointerSvg(point);
@@ -392,18 +437,36 @@ export function GameMap({
   }
 
   function handleDragEnd(e: React.PointerEvent) {
-    if (!dragFromRegionId) return;
+    if (!dragFromRegionId || e.pointerId !== activePointerIdRef.current) return;
+    releaseDragCapture(e);
     const point = toSvgPoint(e.clientX, e.clientY);
     const targetId = point ? findRegionAtPoint(point) : null;
-    if (targetId && targetId !== dragFromRegionId) {
+    // Saldırı yalnızca GERÇEK bir sürüklemeden sonra gönderilir (bkz.
+    // CLICK_VS_DRAG_THRESHOLD_PX notu) — eşik altında kalan bir dokunuş, parmak
+    // komşu bir bölgenin üstüne kaysa bile yalnızca bir "tap"tır ve bölgeyi seçer.
+    if (hasDraggedRef.current && targetId && targetId !== dragFromRegionId) {
       onAttack(dragFromRegionId, targetId);
     }
     if (hasDraggedRef.current) {
       suppressClickRef.current = true;
     }
-    setDragFromRegionId(null);
-    setDragPointerSvg(null);
-    setDragHoverTargetId(null);
+    resetDragState();
+  }
+
+  /**
+   * docs/24-responsive-small-screens.md Problem B: `pointercancel` bir bırakma
+   * DEĞİLDİR — tarayıcı jesti sahiplendiğinde ya da pointer geçersizleştiğinde
+   * gelir. Bu yüzden ASLA saldırı göndermez, yalnızca sürüklemeyi düşürür.
+   * Eşik aşılmışsa ardından gelebilecek sahte click yine de bastırılır; aksi halde
+   * iptal edilen bir sürükleme kaynak bölgenin bilgi panelini açardı.
+   */
+  function handleDragCancel(e: React.PointerEvent) {
+    if (e.pointerId !== activePointerIdRef.current) return;
+    releaseDragCapture(e);
+    if (hasDraggedRef.current) {
+      suppressClickRef.current = true;
+    }
+    resetDragState();
   }
 
   function handleRegionClick(regionId: string) {
@@ -496,6 +559,7 @@ export function GameMap({
             onDragStart={handleDragStart(region.id)}
             onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
           />
         ))}
       </g>

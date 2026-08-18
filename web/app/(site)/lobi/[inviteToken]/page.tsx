@@ -137,7 +137,7 @@ function InviteLobbyPageContent({ params }: InviteLobbyPageProps) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-16">
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 px-4 py-(--gutter-16)">
       <div className="flex flex-col items-center gap-3 text-center">
         <span className="flex size-12 items-center justify-center rounded-2xl" style={{ backgroundColor: "#F5B94222", color: "#F5B942" }}>
           <Lock className="size-6" aria-hidden="true" />

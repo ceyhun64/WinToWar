@@ -76,27 +76,31 @@ export default function MacPage({ params }: MacPageProps) {
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
       <PageHero icon={ScrollText} title="Maç Özeti" />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 min-[22rem]:grid-cols-2 sm:grid-cols-4">
         <StatCard icon={Activity} label="Durum" value={MATCH_STATUS_LABEL[match.status] ?? match.status} />
         <StatCard icon={Clock} label="Süre" value={formatDuration(match.startedAtUtc, match.completedAtUtc)} />
-        <div className="col-span-2">
+        {/* Tek sütunlu düzende `col-span-2` implicit bir ikinci sütun doğurur —
+            span yalnızca ızgara gerçekten iki sütunluyken uygulanır. */}
+        <div className="min-[22rem]:col-span-2">
           <StatCard icon={Trophy} label="Kazanan" value={winnerNames || "—"} accent="#F5B942" />
         </div>
       </div>
 
-      <GameMap
-        map={map}
-        state={match}
-        myPlayerId=""
-        selectedRegionId={null}
-        // Biten bir maçın anlık görüntüsünde state.armies zaten boştur (bkz.
-        // 07-pages.md Non-Goals — hamle hamle replay yok), sevkiyat event'leri hiç gelmez.
-        armyDeparted={null}
-        armyClashed={null}
-        armyArrived={null}
-        onSelectRegion={() => {}}
-        onAttack={() => {}}
-      />
+      <div className="aspect-square w-full">
+        <GameMap
+          map={map}
+          state={match}
+          myPlayerId=""
+          selectedRegionId={null}
+          // Biten bir maçın anlık görüntüsünde state.armies zaten boştur (bkz.
+          // 07-pages.md Non-Goals — hamle hamle replay yok), sevkiyat event'leri hiç gelmez.
+          armyDeparted={null}
+          armyClashed={null}
+          armyArrived={null}
+          onSelectRegion={() => {}}
+          onAttack={() => {}}
+        />
+      </div>
 
       {payout ? (
         <section className="flex flex-col gap-3">

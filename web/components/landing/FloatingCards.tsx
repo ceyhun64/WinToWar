@@ -63,16 +63,18 @@ export function FloatingCards({ variant }: { variant: "compact" | "floating" }) 
         {STATS.map(({ icon: Icon, label, value, accent }) => (
           <div
             key={label}
-            className="flex items-center gap-2.5 rounded-xl bg-transparent px-3 py-2.5 "
+            className="flex min-w-0 items-center gap-2.5 rounded-xl bg-transparent px-3 py-2.5"
           >
-            <span
-              className="flex size-10 shrink-0 items-center justify-center rounded-lg"
-            >
+            {/* docs/24-responsive-small-screens.md Bölüm 4: hücrenin en dar hâli
+                (ikon + "10-15 Dk") 320px'te iki sütuna sığmıyordu. İkon kutusu
+                akışkan hâle getirildi ve metin sütununa `min-w-0` verildi —
+                390px ve üzerinde ikon yine 2.5rem, yani görünüm değişmez. */}
+            <span className="flex size-(--landing-stat-icon) shrink-0 items-center justify-center rounded-lg">
               <Icon className="size-5" aria-hidden="true" />
             </span>
-            <span className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold tabular-nums text-white">{value}</span>
-              <span className="text-[11px] text-white/55">{label}</span>
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate text-sm font-semibold tabular-nums text-white">{value}</span>
+              <span className="truncate text-[11px] text-white/55">{label}</span>
             </span>
           </div>
         ))}

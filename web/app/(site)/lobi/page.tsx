@@ -153,7 +153,10 @@ function LobiPageContent() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-8 py-8 md:py-10">
+    // docs/24-responsive-small-screens.md Bölüm 4: `px-8` mobil varyantsızdı —
+    // 320px'te 64px'lik yatay padding içeriğe yalnızca 256px bırakıyordu. Akışkan
+    // gutter 390px ve üzerinde yine 2rem verir (bkz. globals.css).
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-(--gutter-8) py-8 md:py-10">
       <LobiBackground mode={visualMode} />
       {/*
         docs/04-style.md Landing İstisnası pilotu — 3. tur geri bildirim

@@ -52,7 +52,7 @@ function ProfilPageContent() {
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-4 py-8 md:py-10">
       <PageHero icon={User} title="Profil" subtitle="Oyuncu bilgilerin ve bakiyen." />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 min-[22rem]:grid-cols-2">
         <StatCard icon={User} label="Görünen ad" value={displayName} accent="#38BDF8" />
         <StatCard icon={Wallet} label="Bakiye" value={`$${balanceUsd ?? "—"}`} accent="#F5B942" />
       </div>
