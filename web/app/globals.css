@@ -204,3 +204,85 @@
 *::-webkit-scrollbar-thumb:hover {
   background-color: #1e40af;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   docs/23-game-ui-refresh-v2.md Aşama 1 — oyun ekranı (`/game/[matchId]`) görsel dili.
+
+   YALNIZCA EKLEME: yukarıdaki hiçbir global token değeri (--background, --card,
+   --radius, --primary …) değiştirilmedi. Bu blok sadece `--game-*` namespace'ini
+   tanımlar ve yalnızca `components/game/*` + `app/game/*` tarafından tüketilir —
+   oyun ekranı dışındaki hiçbir route bu değerlerden etkilenmez.
+
+   İş bölümü (aynı değerin iki kaynağı olmasın diye): TAKIM RENKLERİ burada
+   TANIMLANMAZ, tek kaynağı `lib/game/colors.ts`'tir — çünkü o renkler üzerinde
+   çalışma zamanında matematik yapılıyor (asker sayısına göre koyulaşma/açılma,
+   rozet tonunun türetilmesi) ve bu bir CSS değişkeniyle yapılamaz. Buradaki
+   tokenlar yalnızca CSS'in gerçekten kullandıkları: yüzeyler, durum halkaları,
+   ölçekler, hareket.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* ── Yüzeyler ────────────────────────────────────────────────────────────── */
+  /* Oyun kabuğunun zemini — global --background ile aynı aileden, bir tık daha
+     yumuşak; harita "delik" gibi değil, sahnenin içinde otursun diye. */
+  --game-bg: #0a1524;
+  /* Haritanın kendi zemini (bölgelerin arasındaki "boşluk"). Palet ölçümlerinde
+     tüm takım renklerinin kontrastı bu değere karşı doğrulandı (min 4.78:1). */
+  --game-map-bg: #0d1b30;
+  /* Bölgeler arası ortak sınır — bilinçli olarak DÜŞÜK kontrast: sınır çizgisi
+     asker sayısıyla yarışmamalı (öncelik zinciri: asker sayıları > harita). */
+  --game-map-edge: rgba(7, 14, 26, 0.5);
+  /* HUD/panel yüzeyi — haritanın üstünde yüzen, hafif şeffaf cam. */
+  --game-panel: rgba(13, 26, 46, 0.82);
+  --game-panel-solid: #101f38;
+  --game-panel-border: rgba(255, 255, 255, 0.08);
+  --game-panel-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* ── Tipografi renkleri ──────────────────────────────────────────────────── */
+  --game-text: #eaf1fb;
+  --game-text-muted: #93a6c1;
+  /* Asker sayısı her zaman beyaz; rozet tonu colors.ts'te bu beyaza karşı en az
+     7.7:1 kontrast verecek şekilde TÜRETİLİR (AAA, küçük metin için). */
+  --game-text-on-badge: #ffffff;
+
+  /* ── Sahiplik/durum: rengin YANINDA çalışan ikinci kanal ─────────────────────
+     Renk körlüğünde 12 rengin tamamı ayrışamaz (ölçüldü: en kötü çift ΔE 5.3).
+     Bu yüzden sahiplik asla yalnızca renkle gösterilmez — aşağıdaki halkalar
+     renkten bağımsız, akromatik bir ikinci kanaldır. */
+  --game-ring-own: rgba(255, 255, 255, 0.92);
+  --game-ring-own-width: 2.25px;
+  --game-ring-selected: #ffffff;
+  --game-ring-target: rgba(255, 255, 255, 0.34);
+  --game-ring-hover: rgba(255, 255, 255, 0.6);
+  --game-badge-ring: rgba(240, 246, 253, 0.94);
+
+  /* ── Yarıçap ─────────────────────────────────────────────────────────────── */
+  --game-radius-xs: 6px;
+  --game-radius-sm: 10px;
+  --game-radius-md: 14px;
+  --game-radius-lg: 20px;
+  --game-radius-pill: 999px;
+
+  /* ── Gölge — hafif ve tek yönlü; "kart yığını" hissi verilmez ────────────── */
+  --game-shadow-sm: 0 1px 2px rgba(2, 8, 18, 0.4);
+  --game-shadow-md: 0 4px 14px rgba(2, 8, 18, 0.45);
+  --game-shadow-lift: 0 10px 30px rgba(2, 8, 18, 0.55);
+  --game-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* ── Boşluk ölçeği ───────────────────────────────────────────────────────── */
+  --game-space-1: 4px;
+  --game-space-2: 8px;
+  --game-space-3: 12px;
+  --game-space-4: 16px;
+  --game-space-5: 24px;
+  --game-space-6: 32px;
+
+  /* ── Hareket — görev tanımı §5: 120-220 ms, bilgi taşımayan animasyon yok ─── */
+  --game-dur-instant: 90ms;
+  --game-dur-fast: 130ms;
+  --game-dur-base: 170ms;
+  --game-dur-slow: 220ms;
+  --game-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --game-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Hafif overshoot — yalnızca "bir şey belirdi" anlamı taşıyan girişlerde. */
+  --game-ease-pop: cubic-bezier(0.34, 1.4, 0.64, 1);
+}

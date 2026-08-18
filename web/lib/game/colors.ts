@@ -1,60 +1,137 @@
 import type { RoomType } from "./types";
 
-// docs/04-style.md Bölüm 2: 12 oyuncu kimlik rengi (VIP paleti) — soluk/desatüre pastel
-// tonlar, kırmızı/gül ailesi burada kullanılmaz (Danger ile çakışmasın diye — VIP'de
-// oyuncu sayısı çok olduğundan bu genel ilke hâlâ geçerli). Nötr (sahipsiz) bölge ayrı,
-// açık sıcak nötr bir tonda.
+/**
+ * docs/23-game-ui-refresh-v2.md Aşama 1 — takım rengi sistemi.
+ *
+ * Bu dosya oyun ekranının TEK renk kaynağıdır. Renkler `globals.css`'e taşınmaz
+ * çünkü üzerlerinde çalışma zamanında matematik yapılıyor (asker sayısına göre
+ * koyulaşma/açılma, rozet tonunun türetilmesi) — bir CSS değişkeni bunu yapamaz.
+ * `--game-*` tokenları yalnızca CSS'in kendi kullandığı şeyleri (yüzey, halka,
+ * ölçek, hareket) tanımlar.
+ *
+ * ── Paletin neden değiştiği (ölçüm, tahmin değil) ────────────────────────────
+ * Önceki palet soluk/desatüre pastellerden oluşuyordu ve ölçülebilir bir sorunu
+ * vardı: renkler birbirine o kadar yakındı ki, sahiplik yalnızca renkle
+ * gösterildiği için "kimin bölgesi" sorusu belirsiz kalıyordu.
+ *
+ * Yöntem: her renk çifti için CIE-Lab ΔE, hem normal görüşte hem üç renk körlüğü
+ * tipinde (döteranopi / protanopi / tritanopi) simüle edilerek hesaplandı; ayrıca
+ * aşağıdaki güç-bazlı koyulaşma/açılma aralığının HER kombinasyonu dahil edildi
+ * (yani ekranda gerçekten oluşabilen en kötü durum). Her modun en kötü çifti:
+ *
+ *              önce → sonra
+ *   Practice    31.2 → 65.2
+ *   Standart     1.8 →  6.9
+ *   VIP (12)     0.6 →  5.3
+ *
+ * VIP'te 12 rengin renk körlüğünde tam ayrışması matematiksel olarak mümkün
+ * değildir. Bu yüzden görev tanımı §5 gereği sahiplik ASLA yalnızca renkle
+ * gösterilmez — `--game-ring-own` / `--game-ring-target` (globals.css) akromatik
+ * bir ikinci kanal olarak bu paletin yanında çalışır (bkz. Aşama 2, RegionNode).
+ */
+
+/**
+ * Renk körlüğü + kontrast ölçümüyle seçilmiş 12'lik VIP paleti. İlk 4 slot, en
+ * çok kullanılan modlar (Practice/Standart) olduğu için bilinçli olarak en fazla
+ * ayrışan dörtlüdür.
+ */
 export const PLAYER_COLORS = [
-  "#7C93B3", // mavi
-  "#9C8CBF", // mor
-  "#82A98D", // yeşil
-  "#C2A76B", // altın/amber-dışı
-  "#6FAFAE", // turkuaz
-  "#C793A8", // pembe
-  "#A79EDB", // lavanta
-  "#7FBEC6", // camgöbeği
-  "#BDAA5C", // hardal
-  "#B08A6B", // açık kahve/toprak
-  "#5E7FA3", // gök mavisi-koyu
-  "#96A15B", // zeytin yeşili
+  "#4F9BE0", // mavi
+  "#E8705C", // mercan
+  "#C77BEE", // menekşe
+  "#5FD198", // yeşil
+  "#E4E07E", // limon
+  "#C9822C", // kehribar
+  "#9EE891", // yaprak
+  "#8079E8", // indigo
+  "#E891DB", // orkide
+  "#CEC046", // hardal
+  "#91E8CA", // nane
+  "#E56CA8", // gül
 ] as const;
 
-// docs/14-game-map-redesign.md Bölüm 5: asker sayısı rozeti artık beyaz/siyah değil,
-// owner rengiyle uyumlu koyu bir tonda — bölgenin kendi pastel dolgusunun üstünde
-// okunabilir kalması için aynı paletin koyulaştırılmış hali.
-export const PLAYER_COLORS_DARK = [
-  "#445162",
-  "#564D69",
-  "#485D4E",
-  "#6B5C3B",
-  "#3D6060",
-  "#6D515C",
-  "#5C5778",
-  "#46696D",
-  "#685E33",
-  "#614C3B",
-  "#34465A",
-  "#535932",
+/**
+ * 🔒 Müşteri kararı korunuyor: Standart (4 kişilik) oda için mavi-kırmızı-mor-yeşil,
+ * Practice (2 kişilik) için mavi-kırmızı. Slot sırası ve renk kimlikleri aynı kaldı,
+ * yalnızca tonlar yukarıdaki ölçüme göre canlandırıldı. Kırmızı hâlâ Danger
+ * token'ından (`--destructive: #f2495c`) ayrı, daha sıcak/mercan bir tondur —
+ * `04-style.md` Bölüm 2'nin "Danger ile karışmasın" gerekçesi geçerliliğini korur.
+ */
+export const STANDARD_ROOM_COLORS = [
+  PLAYER_COLORS[0], // mavi
+  PLAYER_COLORS[1], // kırmızı/mercan
+  PLAYER_COLORS[2], // mor
+  PLAYER_COLORS[3], // yeşil
 ] as const;
+export const PRACTICE_ROOM_COLORS = [PLAYER_COLORS[0], PLAYER_COLORS[1]] as const;
 
-// 🔒 Müşteri kararı: Standart (4 kişilik) oda için kırmızı-mavi-mor-yeşil, Practice
-// (2 kişilik) için kırmızı-mavi. Bu iki mod, genel 12'lik VIP paletinden BİLEREK ayrı —
-// müşteri özellikle bu iki modda kırmızı istedi. Kırmızı yine de Danger token'ından
-// (`#f2495c`, bkz. globals.css `--destructive`) ayrı, "tatlı"/soluk bir ton (04-style.md
-// Bölüm 2'nin orijinal "Danger ile karışmasın" gerekçesi burada da korunuyor).
-export const STANDARD_ROOM_COLORS = ["#7C93B3", "#D9897E", "#9C8CBF", "#82A98D"] as const; // mavi, kırmızı, mor, yeşil
-export const STANDARD_ROOM_COLORS_DARK = ["#445162", "#8C4F46", "#564D69", "#485D4E"] as const;
-export const PRACTICE_ROOM_COLORS = ["#7C93B3", "#D9897E"] as const; // mavi, kırmızı
-export const PRACTICE_ROOM_COLORS_DARK = ["#445162", "#8C4F46"] as const;
+/**
+ * Sahipsiz/nötr bölge — düşük doygunlukta ve bilinçli olarak hiçbir takım
+ * renginin ailesinde değil (en yakın oyuncu rengine ΔE 6.8, güç aralığı dahil).
+ */
+export const NEUTRAL_COLOR = "#B9C2CE";
 
-export const NEUTRAL_COLOR = "#D8D2C4"; // açık, sıcak nötr — sahipsiz/inert bölge
-export const NEUTRAL_DARK_COLOR = "#6B6559"; // NEUTRAL_COLOR'ın koyu hali — sahipsiz bölge rozeti için
+/**
+ * docs/04-style.md Bölüm 10 "Fog of War": görüş alanı dışındaki bölge yalnızca
+ * arazi şeklini gösterir. Önceki değer (`#C7C7C7`, açık gri) koyu haritada nötr
+ * bölgeden daha PARLAK kalıyordu — yani "bilinmiyor" durumu "sahipsiz" durumundan
+ * daha çok dikkat çekiyordu. Artık zeminden yalnızca ~1.9:1 ayrışan koyu bir ton:
+ * arazi şekli görünür kalır ama katman geri çekilir.
+ */
+export const UNEXPLORED_COLOR = "#3A4A68";
 
-// docs/04-style.md Bölüm 10 "Fog of War": görüş alanı dışındaki bölgeler yalnızca
-// arazi şeklini gösteren soluk/gri bir "keşfedilmemiş alan" dolgusuyla render edilir
-// — nötr bölge tonundan da belirgin şekilde ayrışır ki "sahipsiz ama görünür" ile
-// "görünmez" karışmasın.
-export const UNEXPLORED_COLOR = "#C7C7C7";
+/**
+ * Rozet tonunun hedef bağıl parlaklığı. Bu değer, rozetin üstündeki beyaz asker
+ * sayısına her slotta en az 7.7:1 kontrast verir (WCAG AAA küçük metin eşiği
+ * 7:1) — asker sayısı ekrandaki en önemli bilgi olduğu için AA değil AAA hedeflendi.
+ */
+const BADGE_TARGET_LUMINANCE = 0.085;
+
+function channelToLinear(value: number): number {
+  const v = value / 255;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(hex: string): number {
+  const r = channelToLinear(parseInt(hex.slice(1, 3), 16));
+  const g = channelToLinear(parseInt(hex.slice(3, 5), 16));
+  const b = channelToLinear(parseInt(hex.slice(5, 7), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function scaleHex(hex: string, factor: number): string {
+  const scaled = [1, 3, 5].map((i) =>
+    Math.round(parseInt(hex.slice(i, i + 2), 16) * factor)
+      .toString(16)
+      .padStart(2, "0")
+  );
+  return `#${scaled.join("")}`;
+}
+
+/**
+ * Bir takım renginden rozet/etiket için koyu varyantını TÜRETİR — el ile yazılmış
+ * ikinci bir dizi tutulmaz. Böylece paletteki bir renk değiştiğinde rozet tonu
+ * otomatik takip eder ve beyaz asker sayısının kontrast garantisi (yukarıdaki
+ * `BADGE_TARGET_LUMINANCE`) hiçbir slotta yanlışlıkla bozulamaz.
+ */
+function toBadgeTone(hex: string): string {
+  let low = 0;
+  let high = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (low + high) / 2;
+    if (relativeLuminance(scaleHex(hex, mid)) > BADGE_TARGET_LUMINANCE) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+  return scaleHex(hex, (low + high) / 2);
+}
+
+export const PLAYER_COLORS_DARK = PLAYER_COLORS.map(toBadgeTone);
+export const STANDARD_ROOM_COLORS_DARK = STANDARD_ROOM_COLORS.map(toBadgeTone);
+export const PRACTICE_ROOM_COLORS_DARK = PRACTICE_ROOM_COLORS.map(toBadgeTone);
+export const NEUTRAL_DARK_COLOR = toBadgeTone(NEUTRAL_COLOR);
 
 export function colorForSlot(slot: number): string {
   return PLAYER_COLORS[slot % PLAYER_COLORS.length];
@@ -77,10 +154,11 @@ export interface PlayerRegionColorInput {
 }
 
 /**
- * docs/03-game-rules.md güncel müşteri kararı: "kaç adet hesap girdiyse o kadar renk
- * olsun" — her oyuncu kendi `slot`'una karşılık gelen ayrı bir renk alır, oda tipine göre
- * ayrı bir palet kullanılır (Standart: mavi/kırmızı/mor/yeşil, Practice: mavi/kırmızı,
- * VIP: genel 12'lik palet). N oyunculu bir maçta ekranda N farklı renk görünür.
+ * docs/03-game-rules.md güncel müşteri kararı: "kaç adet hesap girdiyse o kadar
+ * renk olsun" — her oyuncu kendi `slot`'una karşılık gelen ayrı bir renk alır,
+ * palet oda tipine göre değişir (Standart: mavi/kırmızı/mor/yeşil, Practice:
+ * mavi/kırmızı, VIP: genel 12'lik palet). N oyunculu bir maçta ekranda N farklı
+ * renk görünür.
  */
 export function playerFillColor({ roomType, ownerId, ownerSlot }: PlayerRegionColorInput): string {
   if (ownerId === null || ownerSlot === null) return NEUTRAL_COLOR;
@@ -89,9 +167,10 @@ export function playerFillColor({ roomType, ownerId, ownerSlot }: PlayerRegionCo
 }
 
 /**
- * Rozet/etiket için koyu varyant. docs/03-game-rules.md güncel müşteri kararı: "kale
- * gibi bir alan olmayacak" — hiçbir bölge (ne başlangıç bölgesi ne fethedilen) diğerlerinden
- * daha büyük/koyu bir rozetle ayrıştırılmaz, tüm sahipli bölgeler aynı görsel muameleyi görür.
+ * Rozet/etiket/sevkiyat için koyu varyant. docs/03-game-rules.md güncel müşteri
+ * kararı: "kale gibi bir alan olmayacak" — hiçbir bölge (ne başlangıç bölgesi ne
+ * fethedilen) diğerlerinden daha büyük/koyu bir rozetle ayrıştırılmaz, tüm sahipli
+ * bölgeler aynı görsel muameleyi görür.
  */
 export function playerAccentColor({ roomType, ownerId, ownerSlot }: PlayerRegionColorInput): string {
   if (ownerId === null || ownerSlot === null) return NEUTRAL_DARK_COLOR;
@@ -101,52 +180,55 @@ export function playerAccentColor({ roomType, ownerId, ownerSlot }: PlayerRegion
 
 /** Bir hex rengi siyaha doğru `amount` (0-1) oranında koyulaştırır. */
 function darkenHex(hex: string, amount: number): string {
-  const num = parseInt(hex.slice(1), 16);
-  const r = Math.round(((num >> 16) & 0xff) * (1 - amount));
-  const g = Math.round(((num >> 8) & 0xff) * (1 - amount));
-  const b = Math.round((num & 0xff) * (1 - amount));
-  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  return scaleHex(hex, 1 - amount);
 }
 
 /**
- * Bir hex rengi beyaza doğru `amount` (0-1) oranında açar. docs/20-state-io-army-gorsel-fark-giderme.md
- * §2.B.2: hedefe varış anındaki rozet renk parlaması bu fonksiyonu kullanır (RegionNode.tsx).
+ * Bir hex rengi beyaza doğru `amount` (0-1) oranında açar. Hedefe varış anındaki
+ * rozet renk parlaması bu fonksiyonu kullanır (RegionNode.tsx).
  */
 export function lightenHex(hex: string, amount: number): string {
-  const num = parseInt(hex.slice(1), 16);
-  const r = (num >> 16) & 0xff;
-  const g = (num >> 8) & 0xff;
-  const b = num & 0xff;
-  const lr = Math.round(r + (255 - r) * amount);
-  const lg = Math.round(g + (255 - g) * amount);
-  const lb = Math.round(b + (255 - b) * amount);
-  return `#${[lr, lg, lb].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  const lightened = [1, 3, 5].map((i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16);
+    return Math.round(v + (255 - v) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  });
+  return `#${lightened.join("")}`;
 }
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-// 🔒 Müşteri geri bildirimi: önceki oran ("40 askerde tam koyuluk, %35'e kadar") çok
-// koyu görünüyordu, "tatlı renkler" isteniyor — hem tavan hem doygunluk noktası
-// düşürüldü ki pastel his hiçbir asker sayısında kaybolmasın, yalnızca hafifçe belirginleşsin.
+// 🔒 Müşteri geri bildirimi: koyulaşma hiçbir asker sayısında rengin kimliğini
+// yutmamalı, yalnızca hafifçe belirginleştirmeli.
+//
+// 🛠️ Tavan 0.15 → 0.12. Gerekçe ölçüme dayanıyor: koyulaşma aralığı bir oyuncunun
+// rengini BAŞKA bir oyuncunun rengine yaklaştırabiliyor. Palet seçimi zaten bu
+// aralığın tamamı hesaba katılarak yapıldı (yukarıdaki not), ama 0.12 en kötü
+// çapraz çifti ölçülebilir şekilde iyileştirir ve müşterinin istediği "asker
+// arttıkça hafifçe koyulaşsın" etkisini gözle görülür biçimde korur.
 const OWNED_DARKEN_SATURATION_COUNT = 60;
-const OWNED_MAX_DARKEN_AMOUNT = 0.15;
+const OWNED_MAX_DARKEN_AMOUNT = 0.12;
 
-// 🔒 Müşteri örneği: fethedilmeyen (nötr) toprakta savunma 10 iken en koyu, 0 iken en
-// açık. Oran, odanın gerçek `GreyRegionDefenseCount`'una göre normalize edilir (VIP'de
-// bu 1-7 arası farklı bir tavan olabilir, Standart/Practice'te varsayılan 10'dur).
-const NEUTRAL_MAX_LIGHTEN_AMOUNT = 0.6;
+// 🔒 Müşteri örneği: fethedilmeyen (nötr) toprakta savunma tavandayken en koyu,
+// 0 iken en açık. Oran odanın gerçek `GreyRegionDefenseCount`'una göre normalize
+// edilir (VIP'de 1-7, Standart/Practice'te varsayılan 10).
+//
+// 🛠️ Tavan 0.6 → 0.55: yeni nötr ton zaten daha açık başladığı için 0.6, zayıf bir
+// bölgeyi neredeyse saf beyaza taşıyor ve ele geçirme flash'ıyla karışıyordu.
+const NEUTRAL_MAX_LIGHTEN_AMOUNT = 0.55;
 
 /**
- * docs/03-game-rules.md güncel müşteri kararı: bir bölgenin dolgu rengi artık yalnızca
- * sahiplik kimliğini değil, o bölgedeki GÜNCEL asker sayısını da yansıtır — sahipli bir
- * bölgede asker arttıkça renk hafifçe koyulaşır (tatlı/pastel his korunur, bkz. yukarıdaki
- * gerekçe); fethedilmeyen bir toprakta savunma azaldıkça (üstüne asker gelip savunma
- * düştükçe) renk açılır. Yalnızca `GameMap.tsx`'teki bölge dolgusu (RegionShape) için
- * kullanılır — HUD rozeti, üst kontrol barı ve sevkiyat işaretleri sabit kimlik rengini
- * (`playerFillColor`) kullanmaya devam eder, çünkü onlar tek bir bölgenin anlık asker
- * sayısına bağlı değildir.
+ * docs/03-game-rules.md güncel müşteri kararı: bir bölgenin dolgu rengi yalnızca
+ * sahiplik kimliğini değil, o bölgedeki GÜNCEL asker sayısını da yansıtır —
+ * sahipli bir bölgede asker arttıkça renk hafifçe koyulaşır; fethedilmeyen bir
+ * toprakta savunma azaldıkça (üstüne asker gelip savunma düştükçe) renk açılır.
+ * Yalnızca haritadaki bölge dolgusu (RegionShape) için kullanılır — HUD rozeti,
+ * üst kontrol barı ve sevkiyat işaretleri sabit kimlik rengini (`playerFillColor`)
+ * kullanmaya devam eder, çünkü onlar tek bir bölgenin anlık asker sayısına bağlı
+ * değildir.
  */
 export function regionFillColorByStrength(
   input: PlayerRegionColorInput,

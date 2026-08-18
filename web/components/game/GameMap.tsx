@@ -343,7 +343,12 @@ export function GameMap({
     <svg
       ref={svgRef}
       viewBox={`${VIEW_MIN_X} ${VIEW_MIN_Y} ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-      className="w-full h-auto max-h-[75vh] rounded-md border border-border bg-card"
+      // docs/23-game-ui-refresh-v2.md Aşama 1: haritanın zemini/kenarı artık genel
+      // kart tokenlarını (`bg-card`/`border-border`) değil, oyun ekranına ait
+      // `--game-*` tokenlarını kullanır — takım renklerinin kontrastı bu zemine
+      // (`--game-map-bg`) karşı ölçüldü (min 4.78:1, bkz. colors.ts). Kabın
+      // ölçüsü/oranı Aşama 2'de ele alınacak.
+      className="w-full h-auto max-h-[75vh] rounded-[var(--game-radius-md)] border border-[var(--game-panel-border)] bg-[var(--game-map-bg)]"
       role="img"
       aria-label="Lüksemburg haritası"
     >
