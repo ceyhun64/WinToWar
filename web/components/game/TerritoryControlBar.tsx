@@ -15,9 +15,18 @@ interface TerritoryControlBarProps {
  * göstergesi. Yerel oyuncu her zaman en solda (kendi rengiyle), ardından diğer
  * oyuncular slot sırasıyla, sahipsiz/nötr bölge oranı en sağda.
  *
- * Segment renkleri `playerFillColor` üzerinden çözülür — docs/03-game-rules.md güncel
- * müşteri kararı: her oyuncunun kendi `slot` rengi kullanılır (kaç oyuncu varsa o kadar
- * farklı renk), palet oda tipine göre değişir (Standart/Practice/VIP, bkz. colors.ts).
+ * docs/23-game-ui-refresh-v2.md Aşama 4 — kenarlık kaldırıldı.
+ *
+ * Önceki hâlde bar 14px yüksekliğindeydi ve etrafında 2px'lik beyaz bir kenarlık
+ * vardı: yüksekliğin ~%30'u kenarlıktı ve bu beyaz hat, içindeki takım renklerinden
+ * DAHA yüksek kontrastlıydı. Sonuç, koyu lacivert zeminde gözün önce bu çerçeveyi
+ * görmesiydi — yani ekranın öncelik zincirinde (asker sayıları > harita > aksiyonlar
+ * > HUD > dekorasyon) en alttaki öğe, en üsttekinden daha fazla dikkat çekiyordu.
+ *
+ * Artık ağırlık tamamen segmentlerde: dış kenarlık yok, segmentler birbirinden ince
+ * koyu ayraçlarla ayrılıyor (aynı rengin iki komşu segmenti zaten olamaz, ayraç
+ * yalnızca kenarları temiz tutar). Bar da inceltildi — bilgi taşıyor ama haritayla
+ * yarışmıyor.
  */
 export function TerritoryControlBar({ state, myPlayerId }: TerritoryControlBarProps) {
   const totalRegions = state.regions.length;
@@ -39,14 +48,14 @@ export function TerritoryControlBar({ state, myPlayerId }: TerritoryControlBarPr
     return a.slot - b.slot;
   });
 
-  // docs/18-yeni-oyun-ici ui-gelistirme.md Bölüm 30: State.io referansındaki gibi daha
-  // kalın ve belirgin bir "white border" — arka plan koyu lacivert olduğundan (docs
-  // Bölüm 3, değişmez) beyaz kenarlık burada bardaki segmentleri net ayırır.
+  const myCount = regionCountByOwner.get(myPlayerId) ?? 0;
+
   return (
     <div
-      className="flex h-3.5 w-full overflow-hidden rounded-full border-2 border-white/85"
+      className="flex h-2 w-full overflow-hidden rounded-full"
+      style={{ background: "var(--game-panel-border)" }}
       role="img"
-      aria-label="Bölge kontrol oranı"
+      aria-label={`Bölge kontrolü: ${totalRegions} bölgenin ${myCount} tanesi sizin`}
     >
       {orderedPlayers.map((player) => {
         const count = regionCountByOwner.get(player.id) ?? 0;
@@ -55,14 +64,18 @@ export function TerritoryControlBar({ state, myPlayerId }: TerritoryControlBarPr
         return (
           <div
             key={player.id}
-            className="h-full transition-all duration-150 ease-out"
-            style={{ width: `${(count / totalRegions) * 100}%`, backgroundColor: color }}
+            className="h-full border-r transition-[width] ease-(--game-ease-out) duration-(--game-dur-base) last:border-r-0"
+            style={{
+              width: `${(count / totalRegions) * 100}%`,
+              backgroundColor: color,
+              borderColor: "var(--game-map-edge)",
+            }}
           />
         );
       })}
       {neutralCount > 0 ? (
         <div
-          className="h-full transition-all duration-150 ease-out"
+          className="h-full transition-[width] ease-(--game-ease-out) duration-(--game-dur-base)"
           style={{ width: `${(neutralCount / totalRegions) * 100}%`, backgroundColor: NEUTRAL_COLOR }}
         />
       ) : null}

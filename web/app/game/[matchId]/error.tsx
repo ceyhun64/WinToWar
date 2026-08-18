@@ -16,7 +16,13 @@ export default function GameError({ error, reset }: { error: Error & { digest?: 
   }, [error]);
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-16 text-center">
+    // docs/23-game-ui-refresh-v2.md Aşama 4: oyun ekranının kabuğuyla aynı zemin —
+    // hata ekranı da tam ekran oyun bağlamının içinde kalır, sitenin genel
+    // zemininden farklı bir yüzeye düşmüş gibi görünmez.
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col items-center justify-center gap-4 px-4 text-center"
+      style={{ background: "var(--game-bg)", color: "var(--game-text)" }}
+    >
       <h1 className="text-lg font-semibold">Bir şeyler ters gitti</h1>
       <p className="max-w-sm text-sm text-muted-foreground">
         Maçınız sunucuda devam ediyor, bakiyeniz etkilenmedi. Sayfayı yeniden yükleyerek tekrar

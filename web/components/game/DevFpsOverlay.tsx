@@ -36,7 +36,10 @@ export function DevFpsOverlay() {
   if (process.env.NODE_ENV === "production") return null;
 
   return (
-    <div className="pointer-events-none fixed right-3 top-3 z-50 rounded-md bg-black/70 px-2 py-1 font-mono text-xs text-white">
+    // docs/23-game-ui-refresh-v2.md Aşama 4: sağ ÜST'ten sol ALT'a taşındı — menü
+    // butonu sağ üstte duruyor ve ikisi dev ortamında üst üste biniyordu. Sol alt
+    // köşede hiçbir HUD/aksiyon öğesi yok, bu yüzden hiçbir şeyi kapatmaz.
+    <div className="pointer-events-none fixed bottom-3 left-3 z-50 rounded-md bg-black/70 px-2 py-1 font-mono text-xs text-white">
       {fps} FPS
     </div>
   );

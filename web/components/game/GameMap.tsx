@@ -455,17 +455,15 @@ export function GameMap({
     // görünmez hale gelir. Bu aynı zamanda "node'lar kart gibi değil, haritanın
     // doğal parçası gibi" isteğiyle birebir uyumlu.
     //
-    // `dvh` (`vh` değil): mobilde adres çubuğu açılıp kapandıkça harita yeniden
-    // ölçekleniyordu — projenin geri kalanı da `dvh` kullanıyor (globals.css,
-    // docs/13-scroll-lock.md §2.1). Kabın esnek yükseklik alması (flex shell)
-    // Aşama 4'te sayfa iskeletiyle birlikte ele alınır.
+    // Aşama 4 (sayfa iskeleti): sabit bir `vh`/`dvh` tavanı yerine harita artık
+    // kendisine ayrılan alanın TAMAMINI kaplar (`h-full w-full`) — sayfa kabuğu
+    // `flex-1 min-h-0` ile bu alanı hesaplar, yani harita her ekran yüksekliğinde
+    // olabildiğince büyük olur ve hiçbir durum kartı onu küçültmez. Çerçeve/zemin
+    // olmadığı için `preserveAspectRatio` letterbox'ı görünmez kalır.
     <svg
       ref={svgRef}
       viewBox={`${VIEW_MIN_X} ${VIEW_MIN_Y} ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-      // Kap, haritanın kendi oranına (590×594, neredeyse kare) oturtulur:
-      // genişlik hem %100 hem 70dvh ile sınırlandığından SVG kutusu içeriğiyle
-      // aynı orana gelir ve letterbox alanı pratikte kalmaz.
-      className="mx-auto block h-auto w-full max-h-[72dvh] max-w-[min(100%,70dvh)]"
+      className="block h-full w-full"
       role="img"
       aria-label="Lüksemburg haritası"
     >
