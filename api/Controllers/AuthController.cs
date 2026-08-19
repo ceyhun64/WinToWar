@@ -155,10 +155,7 @@ public class AuthController : ControllerBase
         var result = await _authService.RefreshAsync(rawRefreshToken, cancellationToken);
         if (!result.Success)
         {
-            Response.Cookies.Delete(
-                RefreshCookieName,
-                new CookieOptions { Path = RefreshCookiePath }
-            );
+            Response.Cookies.Delete(RefreshCookieName, RefreshCookieDeleteOptions);
             return MapFailure<AuthResponseDto>(result.FailureReason);
         }
 
@@ -178,7 +175,7 @@ public class AuthController : ControllerBase
             await _authService.LogoutAsync(rawRefreshToken, cancellationToken);
         }
 
-        Response.Cookies.Delete(RefreshCookieName, new CookieOptions { Path = RefreshCookiePath });
+        Response.Cookies.Delete(RefreshCookieName, RefreshCookieDeleteOptions);
         return NoContent();
     }
 
@@ -254,6 +251,44 @@ public class AuthController : ControllerBase
         return dto is null ? Unauthorized() : Ok(dto);
     }
 
+    /// <summary>
+    /// 🐞 Canlı ortam bulgusu: web (win-to-war.vercel.app) ile API (wintowar.onrender.com)
+    /// FARKLI site'lardır. SameSite=Strict bir cookie'yi yalnızca aynı site'tan çıkan
+    /// isteklere iliştirir; bu yüzden refresh cookie'si tarayıcıda duruyor ama
+    /// POST /api/auth/refresh'e HİÇ gönderilmiyordu. Sonuç: her sayfa yüklemesinde oturum
+    /// düşüyor, ardından gelen her korumalı istek (ör. odaya katılma) 401 alıyordu.
+    /// Cross-site bir web/API ayrımında tek geçerli değer None'dır — ve tarayıcılar None
+    /// için Secure zorunlu kılar, production zaten https olduğundan bu sağlanır.
+    ///
+    /// Dev'de API http üzerinden çalıştığı için None kullanılamaz (Secure olmayan bir
+    /// SameSite=None cookie'si tarayıcı tarafından tümüyle reddedilir); orada
+    /// localhost:3000 ile localhost:5019 zaten AYNI site (SameSite port'a bakmaz)
+    /// olduğundan Lax sorunsuz çalışır.
+    ///
+    /// ⚠️ Güvenlik notu (docs/11-auth.md Bölüm 4'teki "SameSite=Strict" satırını günceller):
+    /// None, Strict'in sağladığı CSRF korumasını kaldırır. Bu projede kabul edilebilir,
+    /// çünkü cookie yalnızca Path=/api/auth altındaki refresh ucunda kullanılır ve o uç
+    /// yan etki üretmez (yalnızca yeni bir access token verir); para taşıyan tüm uçlar
+    /// cookie'ye değil Authorization: Bearer header'ına bakar ve bir header CSRF
+    /// saldırısıyla taklit edilemez.
+    /// </summary>
+    private SameSiteMode RefreshCookieSameSite =>
+        _environment.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None;
+
+    /// <summary>
+    /// Cookie silme de aynı SameSite/Secure/Path üçlüsüyle yazılmalıdır: SameSite=None bir
+    /// Set-Cookie başlığı Secure olmadan reddedilir, yani öznitelikler eşleşmezse çıkış
+    /// yapıldığında cookie tarayıcıda silinmeden kalırdı.
+    /// </summary>
+    private CookieOptions RefreshCookieDeleteOptions =>
+        new()
+        {
+            HttpOnly = true,
+            Secure = !_environment.IsDevelopment(),
+            SameSite = RefreshCookieSameSite,
+            Path = RefreshCookiePath,
+        };
+
     private void SetRefreshCookie(string rawRefreshToken)
     {
         Response.Cookies.Append(
@@ -267,7 +302,7 @@ public class AuthController : ControllerBase
                 // https üzerinden kabul edilir), bu da her sayfa yenilemesinde oturumun
                 // sıfırlanmasına yol açıyordu. Production'da (https) Secure=true kalır.
                 Secure = !_environment.IsDevelopment(),
-                SameSite = SameSiteMode.Strict,
+                SameSite = RefreshCookieSameSite,
                 Path = RefreshCookiePath,
                 Expires = DateTimeOffset.UtcNow.AddDays(_config.RefreshTokenLifetimeDays),
             }

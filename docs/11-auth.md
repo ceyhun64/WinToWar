@@ -108,7 +108,7 @@ Bu modül doğrudan para taşımaz ama `Wallet`'a giden **tek kapıdır**.
 ### 1.4 Token modeli: Kısa ömürlü JWT access token + rotating refresh token
 
 - **Access token:** JWT, `AuthConfig.AccessTokenLifetimeMinutes = 15`. `sub` claim'i = `PlayerId`, `role` claim'i = `Player`/`Admin`. `Authorization: Bearer` header ile API'de, SignalR handshake'inde `access_token` query param'ı ile taşınır (ASP.NET Core'un resmi SignalR+JWT deseni). Frontend `localStorage`'a **yazmaz**, yalnızca memory/state'te tutar.
-- **Refresh token:** Kriptografik olarak güvenli 256-bit rastgele değer; DB'de yalnızca hash'i (`RefreshToken.TokenHash`) tutulur. `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/auth` cookie. `AuthConfig.RefreshTokenLifetimeDays = 30`.
+- **Refresh token:** Kriptografik olarak güvenli 256-bit rastgele değer; DB'de yalnızca hash'i (`RefreshToken.TokenHash`) tutulur. `HttpOnly`, `Secure`, **`SameSite=None` (production) / `Lax` (dev)** — gerekçe için Bölüm 4'teki 🐞 notu, `Path=/auth` cookie. `AuthConfig.RefreshTokenLifetimeDays = 30`.
 - **Rotation:** Her `/auth/refresh`'te eski token iptal edilir (`RevokedAt`), yenisi verilir. İptal edilmiş bir token tekrar kullanılırsa (çalıntı token belirtisi): o kullanıcının **tüm** aktif refresh token'ları iptal edilir, `SuspiciousActivityLog`'a (`03-game-rules.md` Bölüm 11'deki mevcut mekanizmayla aynı yapı) kayıt düşülür.
 
 ### 1.5 Parola hashing: `Microsoft.AspNetCore.Identity.PasswordHasher<Player>`
@@ -251,7 +251,22 @@ v1'deki tanımlarla aynı (rotation, tek kullanımlık reset token, parola deği
 ## 4. GÜVENLİK
 
 - Parola politikası: min 8 karakter, karmaşıklık zorunluluğu yok (NIST 800-63B, sürtünmeyi artırmadan makul güvenlik).
-- Refresh token cookie: `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/auth`. Access token yalnızca memory'de.
+- Refresh token cookie: `HttpOnly`, `Secure`, **`SameSite=None` (production) / `Lax` (dev)**, `Path=/auth`. Access token yalnızca memory'de.
+
+  🐞 **Canlı ortam bulgusu — `Strict` neden kullanılamıyor.** Web (`win-to-war.vercel.app`) ile API
+  (`wintowar.onrender.com`) farklı site'lardır. `SameSite=Strict`, cookie'yi yalnızca aynı site'tan çıkan
+  isteklere iliştirdiği için refresh cookie'si tarayıcıda duruyor ama `POST /api/auth/refresh`'e **hiç
+  gönderilmiyordu**: her sayfa yüklemesinde oturum düşüyor, ardından gelen her korumalı istek 401 alıyordu
+  (canlıda `POST /api/rooms/{id}/join` → 401 olarak gözlendi). Cross-site bir web/API ayrımında tek geçerli
+  değer `None`'dır; tarayıcılar `None` için `Secure` zorunlu kılar, production zaten https'tir. Dev'de API http
+  üzerinden çalıştığından `None` reddedilirdi — orada `localhost:3000` ile `localhost:5019` zaten aynı site
+  olduğu için (`SameSite` port'a bakmaz) `Lax` yeterlidir.
+
+  ⚠️ **Ödünleşim:** `None`, `Strict`'in sağladığı CSRF korumasını kaldırır. Kabul edilebilir bulundu: cookie
+  yalnızca `Path=/api/auth` altındaki refresh ucunda kullanılır ve o uç yan etki üretmez (yalnızca yeni bir
+  access token verir); para taşıyan tüm uçlar cookie'ye değil `Authorization: Bearer` header'ına bakar ve bir
+  header CSRF saldırısıyla taklit edilemez. ❓ Müşteri daha sıkı bir duruş isterse alternatif, web ve API'yi aynı
+  site altına almaktır (ör. `api.win-to-war.com`) — o zaman `Strict`'e geri dönülebilir.
 - JWT imzalama anahtarı ve `GoogleClientId` ortam değişkeninden okunur, kod içine hardcode edilmez.
 - CORS yalnızca gerçek frontend origin'ine izin verir; `AllowAnyOrigin + credentials` birlikte kullanılmaz.
 - Loglarda `PlayerId` scope'u bulunur (`05-payment.md` Bölüm 8.2 ile tutarlı) ama parola/JWT/refresh token/reset token/Google id_token hiçbir log satırında tam veya kısmi yer almaz.
