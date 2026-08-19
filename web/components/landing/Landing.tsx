@@ -1,23 +1,15 @@
-import Link from "next/link";
 import { Background } from "@/components/landing/Background";
 import { Navbar } from "@/components/landing/Navbar";
 import { Hero } from "@/components/landing/Hero";
 import { BattleScene } from "@/components/landing/BattleScene";
 import { FloatingCards } from "@/components/landing/FloatingCards";
-
-/** docs/07-pages.md Footer içeriği ile birebir aynı 5 link — yalnızca sunum tarzı (ince tek satır) değişir. */
-const FOOTER_LINKS = [
-  { href: "/kurallar", label: "Kurallar" },
-  { href: "/kosullar", label: "Kullanım Şartları" },
-  { href: "/gizlilik", label: "Gizlilik Politikası" },
-  { href: "/sorumlu-oyun", label: "Sorumlu Oyun" },
-  { href: "/destek", label: "Destek" },
-];
+import { Footer } from "@/components/layout/Footer";
 
 /**
  * Yalnızca `/` rotası için tam ekran (100dvh, scrollsuz) premium landing
  * kompozisyonu. `app/(site)/layout.tsx` bu rotada paylaşılan Header/Footer'ı
- * gizler, bu bileşen kendi navbar/footer'ını taşır (bkz. o dosyadaki not).
+ * gizler, bu bileşen kendi navbar.ını taşır (bkz. o dosyadaki not); footer ise
+ * artık kopyalanmaz, paylaşılan `components/layout/Footer.tsx` kullanılır.
  */
 export function Landing() {
   return (
@@ -63,18 +55,15 @@ export function Landing() {
         
         </main>
 
-        <footer className="min-w-0 border-t border-white/5 px-4 py-3 sm:px-6 lg:px-10">
-          <div className="mx-auto flex min-w-0 max-w-7xl flex-col items-center justify-between gap-1.5 text-[11px] text-white/40 sm:flex-row">
-            <span>© {new Date().getFullYear()} WinToWar</span>
-            <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-              {FOOTER_LINKS.map((link) => (
-                <Link key={link.href} href={link.href} className="transition-colors duration-150 hover:text-white/70">
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
-        </footer>
+        {/* Kullanıcı geri bildirimi: "en küçük ekranlı mobil cihazlarda footer
+            çok yüksek". KÖK NEDEN: Landing kendi footer.ını kopyalamıştı, bu
+            yüzden `components/layout/Footer.tsx`.teki mobil açılır (`<details>`)
+            çözümü `/` rotasına hiç ulaşmıyordu. Kopya kaldırıldı, paylaşılan
+            bileşen kullanılıyor — mobilde kapalıyken tek satır, `sm`+ düzen
+            aynı. Yan etki: docs/12-seo.md Bölüm 7 gereği paylaşılan footer.da
+            bulunan /sss, /cerezler, /durum linkleri artık `/` üzerinde de var
+            (orphan sayfa kalmaması zaten istenen davranıştı). */}
+        <Footer />
       </div>
     </div>
   );

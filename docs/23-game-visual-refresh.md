@@ -307,7 +307,57 @@ Kenarlık **tek bir hiyerarşi** olarak çözülür, ilk eşleşen kazanır:
 | Renk | `--game-text-on-badge` beyaz, rozet tonu türetilmiş | ≥7.7:1 garanti (§3.2) |
 | Halka | `--game-badge-ring` 2px | Rozet/dolgu kontrastı bazı slotlarda 2.2:1'e düşebiliyor; halka ayrışmayı **renkten bağımsız** garanti eder |
 
-Boyut, en küçük bölgenin sınırlayıcı kutusuna (ölçüldü: **116×112 birim**) sığacak şekilde seçilmiştir.
+Boyut, en küçük bölgenin sınırlayıcı kutusuna sığacak şekilde seçilmiştir. Ölçüm §6.4 sonrası yenilendi: en küçük bölge artık **73×90 birim** (Vianden silueti), etiket çapasının kenara en kısa uzaklığı **23.6 birim** — 48×31 hap bu bölgede de kendi sınırları içinde kalır (rozetin yuvarlatılmış köşeleri sayesinde en geniş noktada ~0.4 birimlik pay yeterlidir).
+
+### 6.4 Bölge geometrisi — gerçek kanton sınırları 🔒
+
+🔒 **Kullanıcı talimatı (1. tur):** "game içindeki harita tam olarak bu harita gibi olsun ama renk vs hiçbir şeyi değiştirme, sadece şehirlerin şeklini değiştir" (referans: Lüksemburg'un 12 kantonunu gösteren standart idari harita).
+
+🔒 **Kullanıcı talimatı (2. tur, aynı referans harita):** "bu gamemap haritası sana gönderdiğim png dosyasındakinin aynısı olsun ama sadece şehirler bu şekilde gözüksün başka hiç bir şeyi değiştirme renkler vb aynı kalacak sadece şehir çevreleri ve harita tam olarak böyle olacak" — talimat 1. turla aynı yöndedir, ama "**tam olarak**" vurgusu üç eksiği kapatmayı gerektirdi:
+
+1. **Harita hiç yüklenmiyordu.** `MapProvider` bölge başına 4-8 köşe dayatıyordu (aşağıya bakın); gerçek kanton sınırları bunun çok üstünde olduğu için 1. turun geometrisi dosyada duruyor ama uygulama açılışta `InvalidOperationException` ile düşüyordu. Yani oyunda hâlâ eski, elle çizilmiş çokgenler görünüyordu.
+2. **Siluet sadakati:** sadeleştirme toleransı 2.5 → **1.2 birim**.
+3. **Şehir adları** referans haritadakilerle hizalanmadığı için harita "aynı" okunmuyordu (kuzeydeki kanton Clervaux'dur, ama oyunda "Wiltz" yazıyordu).
+
+**Kaynak veri.** geoBoundaries gbOpen **LUX ADM1** (12 kanton, OSM türevi). `api/Data/map.json` bu veriden üretildi:
+
+1. Eşdikdörtgen izdüşüm (`x = lon·cos(lat₀)`, `y = -lat`), **en/boy oranı korunarak** eski haritanın dikey uzanımına (`y` 6.2–570.1) ölçeklendi ve yatayda ortalandı.
+2. Sadeleştirme **topolojiye duyarlı**: her köşe noktasının hangi kantonlara ait olduğu çıkarıldı, ortak sınırlar tek bir "yay" olarak bir kez Douglas–Peucker'den (tolerans **1.2 birim**) geçirildi ve iki komşuya da aynı nokta dizisi verildi. Bu yüzden bölgeler arasında **boşluk/örtüşme yoktur** — bağımsız sadeleştirme yapılsaydı ortak sınırlar birbirinden ayrışır ve aralarında zemin sızardı.
+3. Toplam **1423 nokta** (bölge başına 69–170), `map.json` ≈ 40 KB. Tolerans 2.5'ten 1.2'ye indirildi: 2.5 birim yalnızca haritanın 360px'e indiği mobil genişlikte 1 pikselin altında kalıyordu, masaüstünde (~900px, birim başına ~2.1px) **~5 piksellik** görünür bir köşeleşme üretiyordu. 1.2 birim masaüstünde de ~2.5 pikselin altına iner; daha düşük tolerans dosyayı ikiye katlar, kazancı ise ekranda ölçülemez.
+4. `region.x/y` alanı anlamını korur (sınırlayıcı kutu merkezi) ve yeni geometriden yeniden hesaplandı. Etiket çapası hâlâ **çalışma zamanında** hesaplanır (§4.1); `map.json` bu değeri taşımaz.
+
+**Doğrulama (ölçüldü, tahmin değil).** 975×1400 örnekleme ızgarasında her noktanın kaç bölgenin içinde kaldığı sayıldı: **örtüşme 0 piksel**, ülke içi **boşluk 1 piksel** (758.361 dolu pikselde, yani %0.0001 — tam sınır çizgisine düşen tek örnek noktası). Etiket çapası ölçümleri değişmedi: en küçük bölge **73×90 birim** (Vianden), en kısa çapa payı **23.6 birim** → 48×31 rozet 12 bölgenin hepsinde kendi sınırları içinde kalır (§6.2).
+
+**viewBox.** Gerçek ülke silueti eskisi gibi ~kare değil dikeydir (en/boy ≈ 0.70). Yeni bbox `[120.1, 6.2]–[512.9, 570.1]`, `GameMap.tsx`'teki viewBox sabitleri (`105 / -9 / 423 / 594`) **değişmedi** — geometri bilinçli olarak eski sınırlayıcı kutuya oturtuldu, böylece bu yenileme frontend'de tek satır bile gerektirmedi.
+
+**⚠️ `MapProvider` köşe sayısı guard'ı: 4-8 → 4-500.** Eski sınır, harita elle çizilmiş basit çokgenlerden oluşurken konmuştu (docs/14-game-map-redesign.md Bölüm 3). Gerçek kanton sınırları nehir/vadi izlediği için bölge başına 69–170 köşe taşır; guard gevşetilmeden bu 🔒 talimat **uygulanamaz** (uygulama açılışta durur). Alt sınır korundu (kapalı bir yüzey için en az 3 köşe gerekir, güvenli pay ile 4), üst sınır bozuk/şişmiş veriye karşı emniyet freni olarak 500'e alındı. Komşuluk sayısı ve simetri doğrulamalarına **dokunulmadı**.
+
+**🔒 Bölge adları — referans haritayla hizalandı.** `map.json`'daki `id` ve `neighbors` alanlarına **dokunulmadı** (id'ler testlerde ve komşuluk grafiğinde geçiyor, `GameConfig.NeighborsPerRegion = 3` 🔒 kuralı bağlayıcı); değişen yalnızca oyuncuya görünen `name` alanıdır. Hangi bölgenin hangi kanton siluetini alacağı 1. turdaki eşlemedir (**mevcut komşuluk grafiğini en çok koruyan** eşleme, dal-budamalı tam arama) — yalnızca artık her bölge taşıdığı siluetin adını yazıyor:
+
+| Bölge (`id`) | Kanton silueti = görünen ad | Eski ad (referansla uyumsuzdu) |
+|---|---|---|
+| `luxembourg-city` | Capellen | Luxembourg Şehri |
+| `esch-sur-alzette` | Redange | Esch-sur-Alzette |
+| `differdange` | Wiltz | Differdange |
+| `dudelange` | Diekirch | Dudelange |
+| `mersch` | Mersch | Mersch |
+| `steinfort` | Luxembourg | Steinfort |
+| `ettelbruck` | Esch-sur-Alzette | Ettelbruck |
+| `diekirch` | Vianden | Diekirch |
+| `wiltz` | Clervaux | Wiltz |
+| `echternach` | Echternach | Echternach |
+| `grevenmacher` | Grevenmacher | Grevenmacher |
+| `remich` | Remich | Remich |
+
+⚠️ Bu tablo yüzünden `id` ile görünen ad artık 8 bölgede birbirinden farklıdır (ör. `wiltz` id'li bölge ekranda **Clervaux** yazar). Bilinçli bir kabul: id'yi de değiştirmek 4 test dosyasına ve komşuluk grafiğine dokunmayı gerektirirdi, oysa talimat "başka hiçbir şeyi değiştirme" diyor. Bölge id'lerini okurken **her zaman bu tabloya bakılır**, id'den kanton adı tahmin edilmez. En uzun ad ("Esch-sur-Alzette", 16 karakter) eskisiyle aynı uzunluktadır — §6.3'teki taşma ölçümü değişmedi.
+
+**⚠️ Neden komşulukta tam uyum imkânsız.** Oyun grafiği 3-düzenlidir (her bölge tam 3 komşu), gerçek kanton komşuluğu ise 2–6 arasında değişir; **Vianden'in yalnızca 2 gerçek komşusu vardır**. Dolayısıyla 18 komşuluk kenarının tamamının ortak sınıra karşılık gelmesi matematiksel olarak mümkün değildir. Kullanılan eşlemede **3 kenar** ortak sınır paylaşmaz (ad hizalaması bu sayıyı değiştirmez, çünkü siluet↔`id` eşlemesi aynı kaldı):
+
+- `esch-sur-alzette` ↔ `diekirch` (Redange / Vianden)
+- `ettelbruck` ↔ `diekirch` (Esch-sur-Alzette / Vianden)
+- `wiltz` ↔ `echternach` (Clervaux / Echternach)
+
+Bu üç çift oyun içinde birbirine saldırabilir ama haritada bitişik görünmez. Saldırı zaten komşulukla sınırlı olmadığı için (`GameConfig.AttackAdjacencyOnly = false`) oynanışta hiçbir etkisi yoktur. ❓ Müşteriye bırakılan tek kalan karar: bu üç kenar kabul edilir (mevcut durum) ya da `NeighborsPerRegion = 3` 🔒 kuralı gevşetilip komşuluk gerçek sınırlardan türetilir.
 
 ### 6.3 Bölge adı
 
@@ -414,4 +464,5 @@ Hepsi **bloklamaz** — her birinin yanında zaten uygulanmış bir 🛠️ kara
 - [ ] Dinamik olarak eklenen bir SVG animasyonu mu? **SMIL değil CSS** (§7.1).
 - [ ] Yeni bir animasyon mu? `prefers-reduced-motion` altında ne olacağına karar ver (§7.3) ve §7'deki envantere ekle.
 - [ ] SVG'de token mu kullanıyorsun? `var()` presentation attribute'unda güvenilir çözülmez — **`style` üzerinden ver.**
+- [ ] Bölge geometrisine mi dokunuyorsun? Ortak sınırlar **tek yay** olarak sadeleştirilmelidir (§6.4), her bölge **3 komşu** taşımaya devam etmelidir (`MapProvider` aksi halde açılışta durur) ve `GameMap.tsx`'teki viewBox sabitleri yeni bbox'a göre güncellenmelidir.
 - [ ] Yeni bir sabit renk mi? `globals.css`'teki `--game-*` bloğuna ekle, JSX'e gömme (§2.7).

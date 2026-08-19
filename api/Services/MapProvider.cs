@@ -40,13 +40,19 @@ public class MapProvider
                     $"Bölge '{region.Id}' {GameConfig.NeighborsPerRegion} komşuya sahip olmalı, ancak {region.Neighbors.Count} bulundu.");
             }
 
-            // docs/14-game-map-redesign.md Bölüm 3 "Geometri bütünlüğü": her bölge
-            // yaklaşık 4-8 ana köşeden oluşur — aşırı basit (çizilemez) veya aşırı
-            // karmaşık/köşeli bir şekil harita bütünlüğünü bozar.
-            if (region.Geometry.Points.Count is < 4 or > 8)
+            // "Geometri bütünlüğü": bir bölge çizilebilir bir kapalı şekil olmalı.
+            //
+            // Eski sınır 4-8 köşeydi (docs/14-game-map-redesign.md Bölüm 3) — o zamanki
+            // harita elle çizilmiş basit çokgenlerden oluşuyordu. docs/23-game-visual-refresh.md
+            // §6.4 🔒 ile bölge siluetleri Lüksemburg'un 12 gerçek kantonunun sınırlarına
+            // geçti; bu sınırlar nehirleri/vadileri izlediği için bölge başına 69-170 köşe
+            // taşır ve eski üst sınır uygulamayı açılışta durduruyordu. Alt sınır (kapalı
+            // bir yüzey için en az 3 köşe gerekir, güvenli pay ile 4) korunur, üst sınır
+            // yalnızca bozuk/şişmiş veriye karşı bir emniyet freni olarak 500'e alınır.
+            if (region.Geometry.Points.Count is < 4 or > 500)
             {
                 throw new InvalidOperationException(
-                    $"Bölge '{region.Id}' geometrisi 4-8 köşe içermeli, ancak {region.Geometry.Points.Count} köşe bulundu.");
+                    $"Bölge '{region.Id}' geometrisi 4-500 köşe içermeli, ancak {region.Geometry.Points.Count} köşe bulundu.");
             }
 
             foreach (var neighborId in region.Neighbors)

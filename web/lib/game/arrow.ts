@@ -25,8 +25,10 @@ const SOURCE_PULLBACK = 26;
 // yakın ama tam üstünde değil bir noktada biter (docs Bölüm 16).
 const TARGET_PULLBACK = 8;
 // docs/23-game-ui-refresh-v2.md Aşama 3: uç, "yön okunur bir ok" olacak kadar
-// büyütüldü. Önceki 7×5.5'lik üçgen, 590 birimlik viewBox 360px'e indiğinde
-// ~4×3 piksele düşüyordu — yani okun hangi yöne baktığı mobilde okunmuyordu.
+// büyütüldü. Önceki 7×5.5'lik üçgen, o zamanki 590 birimlik viewBox 360px'e
+// indiğinde ~4×3 piksele düşüyordu — yani okun hangi yöne baktığı mobilde
+// okunmuyordu. (viewBox genişliği docs/23 Bölüm 6.4 ile 423'e indi; birim
+// başına düşen piksel arttığı için bu ölçü daha da güvenli tarafta kaldı.)
 const ARROWHEAD_LENGTH = 15;
 const ARROWHEAD_WIDTH = 13;
 // Bu eşiğin altında hiç ok çizilmez — parmak henüz kıpırdamışken bir "çöp" ok

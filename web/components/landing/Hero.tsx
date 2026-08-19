@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Space_Grotesk } from "next/font/google";
 import { motion } from "framer-motion";
-import { Play, LogIn, Flag, Trophy, ChevronRight } from "lucide-react";
+import {
+  Play,
+  LogIn,
+  Flag,
+  Trophy,
+  ChevronRight,
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LandingCta } from "@/components/layout/LandingCta";
 import { FloatingCards } from "@/components/landing/FloatingCards";
@@ -21,13 +26,6 @@ const HOW_TO_PLAY = [
 ];
 
 /**
- * `docs/04-style.md` Landing İstisnası: yalnızca bu H1 için ek bir "display"
- * font (Space Grotesk) — site genelindeki gövde fontu (Geist/Inter,
- * `app/layout.tsx`) değişmez, kapsam yalnızca Landing başlığı.
- */
-const displayFont = Space_Grotesk({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-display" });
-
-/**
  * `docs/08-page-content.md` Bölüm 3.1'deki Landing içerik iskeleti (tek H1,
  * kazanç formülü, tek birincil CTA) korunur — yalnızca görsel dil (büyük/vurucu
  * başlık, oyun HUD'ı hissi veren CTA) `docs/04-style.md` Landing İstisnası'na
@@ -41,9 +39,7 @@ export function Hero() {
       transition={{ duration: 0.6, ease: "easeOut" }}
       className="flex min-w-0 flex-col gap-(--landing-gap) text-left"
     >
-      <h1
-        className={`${displayFont.className} relative text-[clamp(2.25rem,6vw,4rem)] font-bold uppercase leading-[1.02] tracking-tight text-white`}
-      >
+      <h1 className="relative text-3xl font-bold uppercase leading-none tracking-tight text-white sm:text-5xl lg:text-6xl">
         Fethet. Savun.
         <br />
         <span className="relative inline-block text-[#F5B942]">
@@ -55,24 +51,23 @@ export function Hero() {
         </span>
       </h1>
 
-      <p className="mx-auto max-w-md text-[clamp(0.9rem,1.4vw,1.05rem)] leading-relaxed text-white/65 lg:mx-0">
+      <p className="mx-auto max-w-md text-sm lg:text-[clamp(0.9rem,1.4vw,1.05rem)] leading-relaxed text-white/65 lg:mx-0 ">
         Gerçek zamanlı bölge savaşlarına katıl.
         <br />
-         Komşu kaleleri ele geçir,
-        ordunu büyüt ve son ayakta kalan komutan ol.
+        Komşu kaleleri ele geçir, ordunu büyüt ve son ayakta kalan komutan ol.
       </p>
-      
 
-      <div className="flex flex-wrap items-center gap-3 justify-start">
+      <div className="flex flex-nowrap items-center justify-start gap-2 sm:gap-3">
         <LandingCta
           size="lg"
-          className="group h-(--landing-cta-h) rounded-xl bg-[#38BDF8] px-10 text-lg font-bold text-[#070B14] shadow-[0_0_32px_-6px_rgba(56,189,248,0.75)] ring-2 ring-[#F5B942]/0 transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#38BDF8]/90 hover:shadow-[0_0_40px_-2px_rgba(56,189,248,0.9)] hover:ring-[#F5B942]/60 active:translate-y-0"
+          className="group h-(--landing-cta-h) shrink-0 whitespace-nowrap rounded-xl bg-[#38BDF8] px-5 text-sm font-bold sm:px-8 sm:text-base lg:px-10 lg:text-lg text-[#070B14] shadow-[0_0_32px_-6px_rgba(56,189,248,0.75)] ring-2 ring-[#F5B942]/0 transition-all duration-150 hover:-translate-y-0.5 hover:bg-[#38BDF8]/90 hover:shadow-[0_0_40px_-2px_rgba(56,189,248,0.9)] hover:ring-[#F5B942]/60 active:translate-y-0"
         />
         <Button
           className={buttonVariants({
             variant: "white",
             size: "lg",
-            className: "h-(--landing-cta-h) gap-2 rounded-xl border-white/15 px-7 text-base font-semibold text-black",
+            className:
+              "h-(--landing-cta-h) shrink-0 gap-2 whitespace-nowrap rounded-xl border-white/15 px-4 text-sm font-semibold text-black sm:px-6 sm:text-base lg:px-7",
           })}
           onClick={() => window.open("/lobi", "_blank")}
         >
@@ -81,10 +76,15 @@ export function Hero() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs font-medium text-white/50 lg:justify-start">
+      <div className="flex flex-wrap items-center justify-start gap-1.5 text-xs font-medium text-white/50 ">
         {HOW_TO_PLAY.map(({ icon: Icon, label }, i) => (
           <span key={label} className="flex items-center gap-1.5">
-            {i > 0 && <ChevronRight className="size-3.5 text-white/25" aria-hidden="true" />}
+            {i > 0 && (
+              <ChevronRight
+                className="size-3.5 text-white/25"
+                aria-hidden="true"
+              />
+            )}
             <span className="flex items-center gap-1 rounded-full border border-transparent px-2.5 py-1">
               {label}
             </span>

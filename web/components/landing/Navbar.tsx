@@ -39,7 +39,7 @@ export function Navbar() {
   const navLinkClass = "flex items-center gap-1.5 text-sm font-medium text-white/70 transition-colors duration-150 hover:text-white";
 
   return (
-    <header className="w-full min-w-0 px-4 py-4 sm:px-6 lg:px-10">
+    <header className="w-full min-w-0 px-1 py-1.5 sm:px-6 sm:py-3 lg:px-10">
       <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between rounded-2xl border border-transparent bg-transparent px-4 py-2.5 sm:px-5">
         <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight text-white">
           <Image src="/logo/logo-mark.png" alt="" width={437} height={531} className="h-10 w-auto shrink-0 object-contain" priority />

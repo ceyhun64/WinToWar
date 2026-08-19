@@ -211,9 +211,12 @@ const ARRIVAL_COUNTDOWN_MS = 700;
  * - Sabit genişlikte bir hap (elips değil). Sayı 1, 2 veya 3 haneli olsun rozet
  *   AYNI boyutta kalır — "öngörülebilir genişlik" isteği bu; bölgeden bölgeye
  *   zıplayan bir rozet gözü yorar ve varış geri sayımında titremeye yol açardı.
- * - Genişlik, en küçük bölgenin sınırlayıcı kutusuna (ölçüldü: 116×112 birim)
- *   sığacak şekilde seçildi; 590 birimlik viewBox 360px'e indiğinde sayı ~13px
- *   fiziksel boyutta kalır (önceki tasarımda ~9px idi).
+ * - Genişlik, en küçük bölgenin sınırlayıcı kutusuna sığacak şekilde seçildi.
+ *   Ölçüm, harita gerçek kanton sınırlarına geçtiğinde yenilendi (docs/23
+ *   Bölüm 6.4): en küçük bölge artık 73×90 birim (Vianden silueti), etiket
+ *   çapasının kenara uzaklığı 23.6 birim — hap yuvarlak köşeleri sayesinde
+ *   orada da sınır içinde kalır. viewBox genişliği 590 -> 423 düştüğü için
+ *   sayının FİZİKSEL boyutu küçülmedi, büyüdü (360px'te ~13px -> ~18px).
  * - Sayı her zaman beyaz; rozet tonu colors.ts'te bu beyaza ≥7.7:1 kontrast
  *   verecek şekilde türetilir (AAA).
  */

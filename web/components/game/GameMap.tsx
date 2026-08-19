@@ -22,13 +22,18 @@ interface GameMapProps {
   onAttack: (fromRegionId: string, toRegionId: string) => void;
 }
 
-// docs/14-game-map-redesign.md Bölüm 4/6.2: viewBox, api/Data/map.json'daki organik
-// polygon geometrisinin gerçek sınırlayıcı kutusuna (~[36.7,6.2]-[596.7,570.1]) dar
-// bir kenar payıyla oturacak şekilde seçildi — SVG'nin kendi içinde gereksiz boş
-// alan bırakmadan harita mümkün olan en büyük boyutta fit edilir.
-const VIEW_MIN_X = 22;
+// docs/14-game-map-redesign.md Bölüm 4/6.2: viewBox, api/Data/map.json.daki
+// polygon geometrisinin gerçek sınırlayıcı kutusuna dar bir kenar payıyla (~15
+// birim) oturacak şekilde seçilir — SVG.nin kendi içinde gereksiz boş alan
+// bırakmadan harita mümkün olan en büyük boyutta fit edilir.
+//
+// Kullanıcı talimatı: bölge şekilleri artık Lüksemburg.un 12 gerçek kantonunun
+// sınırları (bkz. map.json). Yeni bbox [120.1, 6.2]-[513.2, 570.1]: gerçek ülke
+// silueti eskisi gibi ~kare değil DİKEY (en/boy ~0.70), bu yüzden viewBox
+// genişliği 590 -> 423.
+const VIEW_MIN_X = 105;
 const VIEW_MIN_Y = -9;
-const VIEW_WIDTH = 590;
+const VIEW_WIDTH = 423;
 const VIEW_HEIGHT = 594;
 
 /**

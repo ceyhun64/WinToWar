@@ -59,22 +59,25 @@ const STATS = [
 export function FloatingCards({ variant }: { variant: "compact" | "floating" }) {
   if (variant === "compact") {
     return (
-      <div className="grid grid-cols-2 gap-3 lg:hidden">
+      <div className="grid grid-cols-2 gap-x-2 gap-y-1 sm:gap-3 lg:hidden">
         {STATS.map(({ icon: Icon, label, value, accent }) => (
           <div
             key={label}
-            className="flex min-w-0 items-center gap-2.5 rounded-xl bg-transparent px-3 py-2.5"
+            className="flex min-w-0 items-center gap-2 rounded-xl bg-transparent px-1 py-1 sm:gap-2.5 sm:px-3 sm:py-2.5"
           >
             {/* docs/24-responsive-small-screens.md Bölüm 4: hücrenin en dar hâli
-                (ikon + "10-15 Dk") 320px'te iki sütuna sığmıyordu. İkon kutusu
-                akışkan hâle getirildi ve metin sütununa `min-w-0` verildi —
-                390px ve üzerinde ikon yine 2.5rem, yani görünüm değişmez. */}
-            <span className="flex size-(--landing-stat-icon) shrink-0 items-center justify-center rounded-lg">
-              <Icon className="size-5" aria-hidden="true" />
+                (ikon + "10-15 Dk") 320px'te iki sütuna sığmıyordu; metin sütunu
+                `min-w-0` ile korunur. Kullanıcının açık talimatı üzerine mobilde
+                (< sm) ikon/tipografi/boşluk küçültüldü — bu, 24 Bölüm 1'deki
+                "390-430px birebir korunur" kuralından bilinçli sapmadır
+                (CLAUDE.md öncelik 1: kullanıcının o anki açık talimatı).
+                sm+ genişlikte akışkan token (2.5rem) davranışı aynen sürer. */}
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg sm:size-(--landing-stat-icon)">
+              <Icon className="size-4 sm:size-5" aria-hidden="true" />
             </span>
             <span className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-sm font-semibold tabular-nums text-white">{value}</span>
-              <span className="truncate text-[11px] text-white/55">{label}</span>
+              <span className="truncate text-xs font-semibold tabular-nums text-white sm:text-sm">{value}</span>
+              <span className="truncate text-[10px] text-white/55 sm:text-[11px]">{label}</span>
             </span>
           </div>
         ))}
