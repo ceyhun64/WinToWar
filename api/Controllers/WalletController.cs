@@ -73,6 +73,14 @@ public class WalletController : ControllerBase
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 new PaymentErrorResponse { Code = "PRICE_ORACLE_UNAVAILABLE", Message = ex.Message });
         }
+        // BTCPay'e hiç ulaşılamadığında (sandbox/prod kapalı, ağ kesik) fiyat oracle'ıyla
+        // aynı desen: yakalanmamış bir HttpRequestException 500'e düşüyor ve Development'ta
+        // tarayıcıya tam stack trace sızdırıyordu (bkz. PaymentProviderTransportHandler).
+        catch (PaymentProviderUnavailableException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new PaymentErrorResponse { Code = "PAYMENT_PROVIDER_UNAVAILABLE", Message = ex.Message });
+        }
     }
 
     [HttpPost("withdraw")]

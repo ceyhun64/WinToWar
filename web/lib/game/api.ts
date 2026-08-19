@@ -17,12 +17,44 @@ export interface JoinRoomResult {
   invoice: PaymentInvoiceDto | null;
 }
 
+/**
+ * Sayfaların hemen hepsi hatayı `setError(String(err))` ile gösteriyor. Düz bir
+ * `Error` bunu "Error: <mesaj>" diye render eder — kullanıcıya gösterilen bir metin
+ * için gereksiz bir teknik önek. `toString()` yalnızca mesajı döndürsün ki hiçbir
+ * çağıran tarafı değiştirmeden tüm ekranlarda temiz metin çıksın; `err.message` ve
+ * `instanceof Error` davranışı aynen korunur.
+ */
+class ApiError extends Error {
+  override toString(): string {
+    return this.message;
+  }
+}
+
 async function parseResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const message = await res.text();
-    throw new Error(message || `İstek başarısız oldu (${res.status})`);
+    const body = await res.text();
+    throw new ApiError(extractErrorMessage(body) || `İstek başarısız oldu (${res.status})`);
   }
   return res.json() as Promise<T>;
+}
+
+/**
+ * Ödeme uçları hatayı `PaymentErrorResponse` ({ code, message }) olarak döner; bu
+ * mesajlar zaten kullanıcıya gösterilmek üzere Türkçe yazılmıştır. Ham gövde
+ * gösterildiğinde kullanıcı ekranda JSON görüyordu — Development'ta bir sunucu
+ * istisnasında ise sayfaya tam .NET stack trace'i basılıyordu. Bu yüzden gövde
+ * JSON ise yalnızca `message` alanı alınır; JSON değilse (düz metin/HTML hata
+ * sayfası) hiçbir şey uydurulmaz, çağıran taraf durum koduna düşer.
+ */
+function extractErrorMessage(body: string): string | null {
+  const trimmed = body.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as { message?: unknown };
+    return typeof parsed.message === "string" && parsed.message.length > 0 ? parsed.message : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

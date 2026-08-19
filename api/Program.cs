@@ -131,12 +131,16 @@ builder.Services.AddSingleton<IPriceOracle>(sp =>
 // BtcPayGreenfieldProvider: BaseAddress/API key config'ten (Payment.BtcPay*)
 // okunur, o yüzden ConfigureHttpClient((sp, client) => ...) overload'u kullanılır
 // (basit AddHttpClient(name, client => ...) formunun aksine, DI'a erişim gerekir).
+builder.Services.AddTransient<PaymentProviderTransportHandler>();
 builder.Services.AddHttpClient("BtcPay").ConfigureHttpClient((sp, client) =>
 {
     var paymentConfig = sp.GetRequiredService<IOptions<PaymentConfig>>().Value;
     client.BaseAddress = new Uri(paymentConfig.BtcPayBaseUrl);
     client.DefaultRequestHeaders.Add("Authorization", $"token {paymentConfig.BtcPayApiKey}");
-});
+})
+// Sağlayıcıya hiç ulaşılamadığında (bağlantı reddi/DNS/timeout) 500 + stack trace
+// yerine tipli bir 503 dönebilmek için — bkz. PaymentProviderTransportHandler.
+.AddHttpMessageHandler<PaymentProviderTransportHandler>();
 
 // docs/21-payment-sandbox-e2e.md Bölüm 5: provider seçimi ASP.NET ortamına değil,
 // Payment:Mode (Fake/Sandbox/Live) enum'ına bağlıdır. Tanımsızsa Fake'tir.

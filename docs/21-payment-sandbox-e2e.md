@@ -157,6 +157,48 @@ Kurallar:
 Bu aşama sonunda `dotnet build` alınır, `Fake` modunda mevcut akışın hâlâ eskisi gibi çalıştığı doğrulanır
 (regresyon), sonra sonraki aşamaya geçilir.
 
+
+### 5.1 Sağlayıcıya ulaşılamadığında — tipli 503 🛠️🐞
+
+🐞 **Gerçek bulgu (üretildi, tahmin değil).** `Payment:Mode=Sandbox` iken BTCPay regtest yığını kapalıysa (ör.
+Docker Desktop kapalı), `/cuzdan` → "Fatura oluştur" **500 Internal Server Error** veriyordu ve Development
+ortamında tarayıcıya **tam .NET stack trace'i** basılıyordu. Sebep: `HttpRequestException`'ı hiçbir katman
+yakalamıyordu.
+
+```
+System.Net.Http.HttpRequestException: ... bağlantı kurulamadı. (localhost:49392)
+  at BtcPayGreenfieldProvider.CreateInvoiceAsync … → PaymentService.CreateInvoiceInternalAsync … → WalletController.TopUp
+```
+
+Aynı hata `AuthEndpointsSecurityTests.WalletBalance_ReturnsOnlyTheAuthenticatedPlayersOwnWallet` testini de
+düşürüyordu (test, gerçek HTTP hattını `WebApplicationFactory` üzerinden kullanıyor ve `dotnet user-secrets`
+değerlerini okuyor) — yani bu bir "yalnızca tarayıcıda" sorunu değildi.
+
+**Çözüm** — fiyat oracle'ındaki (`PriceOracleUnavailableException` → 503) desenin aynısı:
+
+| Parça | Rol |
+|---|---|
+| `PaymentProviderUnavailableException` | "Sağlayıcı cevap ÜRETMEDİ" (bağlantı reddi / DNS / TLS / timeout) |
+| `PaymentProviderTransportHandler` | `"BtcPay"` HttpClient'ına takılı `DelegatingHandler`; taşıma hatasını yukarıdaki tipe çevirir |
+| `WalletController.TopUp`, `PaymentsController.CreateInvoice` | Yakalar → **503** + `PAYMENT_PROVIDER_UNAVAILABLE` |
+
+🛠️ **Neden provider'ın içinde try/catch değil de handler:** provider BTCPay'e beş ayrı uçtan gidiyor; her birini
+tek tek sarmalamak aynı kodu beş kez tekrarlamak ve ileride eklenecek çağrıda unutmak demekti. Handler tüm
+çağrıları tek noktadan kapsar ve `BtcPayGreenfieldProvider`'ın iş mantığına **hiç dokunmaz** (Bölüm 10 kapsam
+sınırı korunur).
+
+⚠️ **Kapsam bilinçli olarak dar:** yalnızca "cevap hiç alınamadı" durumu çevrilir. `EnsureSuccessStatusCode()`'un
+bir 4xx/5xx **yanıt** için fırlattığı `HttpRequestException` handler'dan sonra oluşur, dolayısıyla eskisi gibi
+davranır — sağlayıcının ürettiği iş/yapılandırma hataları "erişilemiyor" ile aynı kefeye konmaz.
+
+`ApproveWithdrawalAsync` (payout yolu) zaten `catch (Exception)` ile sarılı ve talebi `Failed`'a alıp bakiyeyi iade
+ediyor; yeni tip oraya da aynı şekilde düşer, **davranış değişmedi**.
+
+**Frontend.** `web/lib/game/api.ts` içindeki `parseResponse`, hata gövdesi JSON ise artık yalnızca `message`
+alanını alır (JSON değilse hiçbir şey uydurmaz, durum koduna düşer) ve `ApiError` tipiyle fırlatır — sayfaların
+yaygın `setError(String(err))` deseni bu sayede "Error: " öneki ve JSON/stack trace göstermeden temiz Türkçe mesaj
+basar. Hiçbir sayfa dosyası değiştirilmedi.
+
 ## 6. Aşama 4 — Yön A: Müşteri para yatırabiliyor mu (top-up) 🔒
 
 Aşağıdakiler kod okunarak değil, **fiilen çalıştırılarak** doğrulanır. Her adımın kanıtı (invoice ID, TXID, log

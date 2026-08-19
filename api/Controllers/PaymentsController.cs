@@ -52,6 +52,13 @@ public class PaymentsController : ControllerBase
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 new PaymentErrorResponse { Code = "PRICE_ORACLE_UNAVAILABLE", Message = ex.Message });
         }
+        // Maça giriş faturası da top-up ile aynı sağlayıcıya gider — bkz.
+        // WalletController.TopUp'taki aynı gerekçe.
+        catch (PaymentProviderUnavailableException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new PaymentErrorResponse { Code = "PAYMENT_PROVIDER_UNAVAILABLE", Message = ex.Message });
+        }
     }
 
     /// <summary>🔒 Yetki Matrisi: bkz. InvoicesController.GetInvoice'daki aynı sahiplik-doğrulama gerekçesi.</summary>
