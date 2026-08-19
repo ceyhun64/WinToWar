@@ -11,7 +11,7 @@ import { GameCard } from "@/components/layout/GameCard";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { cn } from "@/lib/utils";
 import { getCurrentPlayerId } from "@/lib/identity";
-import { getPaymentInvoice, simulatePaymentPaid } from "@/lib/payments/api";
+import { getPaymentInvoice, isPaymentSimulationAvailable, simulatePaymentPaid } from "@/lib/payments/api";
 import type { PaymentInvoiceDto } from "@/lib/payments/types";
 
 interface OdemePageProps {
@@ -55,6 +55,10 @@ function OdemePageContent({ params }: OdemePageProps) {
   const [invoice, setInvoice] = useState<PaymentInvoiceDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
+  // Butonun görünürlüğü SUNUCUDAN gelir (bkz. lib/payments/api.ts
+  // isPaymentSimulationAvailable) — eskiden `process.env.NODE_ENV` ile derleme zamanında
+  // karar veriliyordu. Başlangıç değeri false: cevap gelene kadar buton çizilmez.
+  const [simulationAvailable, setSimulationAvailable] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showQrMobile, setShowQrMobile] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -67,6 +71,18 @@ function OdemePageContent({ params }: OdemePageProps) {
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    isPaymentSimulationAvailable().then((available) => {
+      if (!cancelled) {
+        setSimulationAvailable(available);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -298,10 +314,11 @@ function OdemePageContent({ params }: OdemePageProps) {
         <Badge variant="outline">{invoice.currentConfirmations}/{invoice.requiredConfirmations} onay</Badge>
       </div>
 
-      {/* docs/05-payment.md Bölüm 0.3: bu buton yalnızca FakePaymentProvider'ın
-          etkin olduğu Development ortamında anlamlıdır (bkz. Program.cs,
-          PaymentsDevController) — üretimde hiç render edilmez. */}
-      {process.env.NODE_ENV !== "production" ? (
+      {/* docs/05-payment.md Bölüm 0.3: bu buton yalnızca FakePaymentProvider etkinken
+          anlamlıdır. Koşul artık ortam (Development) değil, sunucunun bildirdiği gerçek
+          durum (bkz. PaymentsDevController.GetAvailability) — böylece canlıda da
+          çalışır ve Payment:Mode Sandbox/Live yapıldığı anda kendiliğinden kaybolur. */}
+      {simulationAvailable ? (
         <Button variant="white" disabled={simulating} onClick={handleSimulatePaid}>
           {simulating ? "Simüle ediliyor..." : "Ödemeyi Simüle Et (test modu)"}
         </Button>

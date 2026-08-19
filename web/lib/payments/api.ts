@@ -43,15 +43,36 @@ export async function getPaymentInvoice(invoiceId: string): Promise<PaymentInvoi
 }
 
 /**
- * 🛠️ Bölüm 0.3 ön koşulu: BTCPay regtest/testnet erişilemediği için geliştirme
- * ortamında ödeme akışını uçtan uca tetiklemenin tek yolu bu uçtur (bkz.
- * api/Controllers/PaymentsDevController.cs — yalnızca Development + FakePaymentProvider
- * ile çalışır, gerçek/mainnet provider'a geçildiğinde sunucu tarafında otomatik devre dışı kalır).
+ * 🛠️ Bölüm 0.3 ön koşulu: gerçek bir BTCPay bağlı değilken ödeme akışını uçtan uca
+ * tetiklemenin tek yolu bu uçtur (bkz. api/Controllers/PaymentsDevController.cs).
+ *
+ * Koşul artık "ortam Development mı" değil, "ödeme sağlayıcısı sahte mi" — bu yüzden
+ * canlıda da çalışır ve `Payment:Mode` `Sandbox`/`Live` yapıldığı anda sunucu tarafında
+ * kendiliğinden 404'e döner. Kimlikli çağrı zorunlu (`authFetch`): uç `[Authorize]`'dır ve
+ * yalnızca çağıranın kendi invoice'ını kapatır.
  */
 export async function simulatePaymentPaid(invoiceId: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/api/dev/payments/${invoiceId}/simulate-paid`, { method: "POST" });
+  const res = await authFetch(`/api/dev/payments/${invoiceId}/simulate-paid`, { method: "POST" });
   if (!res.ok) {
     throw new Error(`Simülasyon başarısız oldu (${res.status})`);
+  }
+}
+
+/**
+ * "Ödemeyi Simüle Et" butonunun gösterilip gösterilmeyeceğini SUNUCUYA sorar. Eskiden bu
+ * karar `process.env.NODE_ENV` ile derleme zamanında veriliyordu; sunucunun gerçek
+ * `Payment:Mode`'undan kopuk olduğu için hem canlıda buton hiç görünmüyordu hem de
+ * "buton var ama uç 404" durumu mümkündü. Uç erişilemezse (ör. oturum yok) buton
+ * gösterilmez — güvenli varsayılan.
+ */
+export async function isPaymentSimulationAvailable(): Promise<boolean> {
+  try {
+    const res = await authFetch(`/api/dev/payments/availability`);
+    if (!res.ok) return false;
+    const body = (await res.json()) as { available?: boolean };
+    return body.available === true;
+  } catch {
+    return false;
   }
 }
 

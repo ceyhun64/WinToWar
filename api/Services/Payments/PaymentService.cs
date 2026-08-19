@@ -195,10 +195,16 @@ public class PaymentService
     /// denetimi, Faz 8 — Controller'ın doğrudan PaymentDbContext sorgulaması Controller→
     /// Service→Model kuralını ihlal ediyordu).
     /// </summary>
-    public async Task<(string BtcPayInvoiceId, decimal AmountLtc)?> GetSimulationDetailsAsync(Guid invoiceId, CancellationToken cancellationToken)
+    /// <summary>
+    /// `PlayerId` de döner: simülasyon ucu artık yalnızca Development'ta değil, ödeme
+    /// sağlayıcısı sahte olduğu HER ortamda açık (bkz. PaymentsDevController) — dolayısıyla
+    /// "bu invoice çağıranın mı" sorusunun sunucuda cevaplanması gerekir. Bu alan olmadan
+    /// bir oyuncu, id'sini bildiği BAŞKA bir oyuncunun invoice'ını ödenmiş sayabilirdi.
+    /// </summary>
+    public async Task<(string BtcPayInvoiceId, decimal AmountLtc, string PlayerId)?> GetSimulationDetailsAsync(Guid invoiceId, CancellationToken cancellationToken)
     {
         var invoice = await _db.PaymentInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
-        return invoice is null ? null : (invoice.BtcPayInvoiceId, invoice.AmountLtc);
+        return invoice is null ? null : (invoice.BtcPayInvoiceId, invoice.AmountLtc, invoice.PlayerId);
     }
 
     /// <summary>docs/07-pages.md `/gecmis`: bir oyuncunun ödeme geçmişi, en yeniden eskiye.</summary>
